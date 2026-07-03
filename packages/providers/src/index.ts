@@ -358,35 +358,56 @@ abstract class LoggedProvider {
     task: () => Promise<ProviderCallResult<T>>,
   ): Promise<T> {
     const startedAt = Date.now();
+    let lastError: NormalizedProviderError | null = null;
 
-    try {
-      const result = await task();
-      await this.logger?.({
-        contextRequestId: input.requestId,
-        provider: this.provider,
-        platform: input.platform,
-        statusCode: result.statusCode,
-        durationMs: Date.now() - startedAt,
-        ...(result.inputTokens === undefined ? {} : { inputTokens: result.inputTokens }),
-        ...(result.outputTokens === undefined ? {} : { outputTokens: result.outputTokens }),
-      });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const result = await task();
+        await this.logger?.({
+          contextRequestId: input.requestId,
+          provider: this.provider,
+          platform: input.platform,
+          statusCode: result.statusCode,
+          durationMs: Date.now() - startedAt,
+          ...(result.inputTokens === undefined ? {} : { inputTokens: result.inputTokens }),
+          ...(result.outputTokens === undefined ? {} : { outputTokens: result.outputTokens }),
+        });
 
-      return result.value;
-    } catch (error) {
-      const normalized = normalizeProviderError(this.provider, error);
-      await this.logger?.({
-        contextRequestId: input.requestId,
-        provider: this.provider,
-        platform: input.platform,
-        statusCode: normalized.statusCode,
-        durationMs: Date.now() - startedAt,
-        errorCode: normalized.errorCode,
-        errorMessage: normalized.message,
-      });
+        return result.value;
+      } catch (error) {
+        const normalized = normalizeProviderError(this.provider, error);
+        lastError = normalized;
 
-      throw normalized;
+        if (attempt === 0 && isRetryableProviderError(normalized)) {
+          await delay(250);
+          continue;
+        }
+
+        break;
+      }
     }
+
+    const normalized = lastError ?? new NormalizedProviderError(this.provider, "PROVIDER_ERROR", "Provider request failed.");
+    await this.logger?.({
+      contextRequestId: input.requestId,
+      provider: this.provider,
+      platform: input.platform,
+      statusCode: normalized.statusCode,
+      durationMs: Date.now() - startedAt,
+      errorCode: normalized.errorCode,
+      errorMessage: normalized.message,
+    });
+
+    throw normalized;
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableProviderError(error: NormalizedProviderError): boolean {
+  return error.statusCode === null || error.statusCode === 429 || error.statusCode >= 500;
 }
 
 function normalizeProviderError(provider: ProviderName, error: unknown): NormalizedProviderError {

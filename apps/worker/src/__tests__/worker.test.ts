@@ -9,6 +9,7 @@ import {
   type ExaClient,
   type FetchContentInput,
   type FetchLayerClient,
+  NormalizedProviderError,
   type NormalizedSourceCandidate,
   type ProviderCallLogInput,
   type ProviderClients,
@@ -225,6 +226,16 @@ class CountingExa implements ExaClient {
   }
 }
 
+class FailingExa implements ExaClient {
+  async search(_input: WebSearchInput): Promise<NormalizedSourceCandidate[]> {
+    throw new NormalizedProviderError("exa", "PROVIDER_HTTP_ERROR", "Exa failed.", 503);
+  }
+
+  async fetchContent(_input: FetchContentInput): Promise<NormalizedSourceCandidate[]> {
+    return [];
+  }
+}
+
 class CountingXquik implements XquikClient {
   searchCalls = 0;
   fetchCalls = 0;
@@ -423,6 +434,19 @@ describe("research worker pipeline", () => {
     expect(run.result.context_pack[0]?.claim).toBe("Repaired claim");
   });
 
+  it("normalizes provider failures into public gaps", async () => {
+    const pipeline = new ResearchPipeline(
+      createProviders({
+        exa: new FailingExa(),
+      }),
+    );
+
+    const run = await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
+
+    expect(run.result.sources).toEqual([]);
+    expect(run.result.gaps).toContain("web provider was unavailable or returned no normalized evidence.");
+  });
+
   it("marks a job failed when model JSON remains invalid", async () => {
     const store = new InMemoryWorkerStore({
       platforms: ["web"],
@@ -442,7 +466,7 @@ describe("research worker pipeline", () => {
 
     expect(response.status).toBe("failed");
     expect(store.read().status).toBe("failed");
-    expect(store.read().errorCode).toBe("MODEL_INVALID_JSON");
+    expect(store.read().errorCode).toBe("invalid_model_output");
   });
 
   it("sends completed webhook payloads with id, status, and final result", async () => {

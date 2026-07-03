@@ -31,16 +31,17 @@ const toolSchema = `{
 }`;
 
 const errorCodes = [
-  "AUTH_REQUIRED",
-  "INVALID_API_KEY",
-  "INVALID_REQUEST",
-  "INSUFFICIENT_CREDITS",
-  "MONTHLY_CREDIT_LIMIT_EXCEEDED",
-  "DEPTH_NOT_ALLOWED",
-  "RATE_LIMITED",
-  "CONCURRENCY_LIMIT_EXCEEDED",
-  "NOT_FOUND",
-  "INTERNAL_ERROR",
+  "invalid_request",
+  "unauthorized",
+  "forbidden_depth",
+  "insufficient_credits",
+  "rate_limited",
+  "provider_error",
+  "model_error",
+  "invalid_model_output",
+  "job_not_found",
+  "idempotency_key_conflict",
+  "internal_error",
 ];
 
 export default function ApiReferencePage() {
@@ -61,11 +62,14 @@ export default function ApiReferencePage() {
           <aside className="docsToc">
             <a href="#schema">Tool schema</a>
             <a href="#auth">Authentication</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#depth-guide">Depth guide</a>
+            <a href="#platform-guide">Platform guide</a>
             <a href="#jobs">Async jobs</a>
             <a href="#webhooks">Webhooks</a>
-            <a href="#depths">Depths</a>
-            <a href="#platforms">Platforms</a>
             <a href="#errors">Errors</a>
+            <a href="#deploy">Deploy</a>
+            <a href="#env">Env vars</a>
           </aside>
           <article className="docsArticle">
             <h2 id="schema">Tool schema for agents</h2>
@@ -76,21 +80,12 @@ export default function ApiReferencePage() {
               Send API keys with <code>Authorization: Bearer sk_sc_...</code>. Keys are scoped to a
               workspace, can set a monthly credit limit, and can cap max depth.
             </p>
-
-            <h2 id="jobs">Async jobs</h2>
             <p>
-              Use <code>{"\"async\": true"}</code> for work that may take longer. The create response
-              can return <code>202</code> with an id. Poll <code>GET /v1/context/:id</code> until the
-              status is completed or failed.
+              Store keys server-side only. Do not put SupaContext keys in browser bundles, public
+              mobile clients, logs, analytics events, or support screenshots.
             </p>
 
-            <h2 id="webhooks">Webhooks</h2>
-            <p>
-              Provide <code>webhook_url</code> on async requests to receive completion events. Webhook
-              signatures must be verified before processing.
-            </p>
-
-            <h2 id="depths">Depth levels</h2>
+            <h2 id="pricing">Pricing and credits</h2>
             <div className="rows">
               {Object.entries(DEPTH_CREDIT_COST).map(([depth, credits]) => (
                 <div className="row" key={depth}>
@@ -100,10 +95,19 @@ export default function ApiReferencePage() {
               ))}
             </div>
 
-            <h2 id="platforms">Platform selection</h2>
+            <h2 id="depth-guide">Depth selection guide</h2>
+            <p>
+              Use <code>fast</code> for lightweight lookups, <code>standard</code> for normal agent
+              context, <code>thorough</code> for higher confidence multi-source research, and{" "}
+              <code>deep</code> for expensive broad research. Trial workspaces cannot use deep.
+            </p>
+
+            <h2 id="platform-guide">Platform selection guide</h2>
             <p>
               Supported platforms are <code>{PLATFORMS.join(", ")}</code>. Omit the array to let the
-              API select all supported platforms.
+              API use all supported platforms. Restrict platforms when an agent already knows the
+              desired source type, for example YouTube-only transcript context or Reddit-only buyer
+              sentiment.
             </p>
 
             <h2 id="limits">Rate limits</h2>
@@ -119,12 +123,41 @@ export default function ApiReferencePage() {
               ))}
             </div>
 
+            <h2 id="jobs">Async jobs</h2>
+            <p>
+              Use <code>{"\"async\": true"}</code> for work that may take longer. The create response
+              can return <code>202</code> with an id. Poll <code>GET /v1/context/:id</code> until the
+              status is completed, failed, or cancelled.
+            </p>
+
+            <h2 id="webhooks">Webhooks</h2>
+            <p>
+              Provide <code>webhook_url</code> on async requests to receive completion events. Treat
+              delivery as best-effort and keep polling as the authoritative recovery path.
+            </p>
+
             <h2 id="errors">Error codes</h2>
             <div className="codeGrid">
               {errorCodes.map((code) => (
                 <code key={code}>{code}</code>
               ))}
             </div>
+
+            <h2 id="deploy">Railway deployment notes</h2>
+            <p>
+              Deploy separate web, API, and worker services from the monorepo. Set API and worker
+              health checks to <code>/health</code>. Apply Supabase migrations before routing traffic,
+              configure Creem webhooks to <code>/api/billing/creem/webhook</code>, and set QStash to
+              call the worker job endpoint.
+            </p>
+
+            <h2 id="env">Required environment groups</h2>
+            <p>
+              Configure Clerk, Supabase Postgres, Creem product ids and webhook secret, Upstash Redis,
+              QStash signing keys, provider keys, an internal worker token, and a 32+ character API
+              key hash secret. See the
+              repository README and <code>.env.example</code> for exact variable names.
+            </p>
           </article>
         </section>
       </main>

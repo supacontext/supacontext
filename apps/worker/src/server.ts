@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import { ResearchPipeline } from "./pipeline.js";
 import type { PublicContextResult } from "./public-result.js";
+import { verifyInternalToken, verifyQstashSignature } from "./qstash-signature.js";
 import { PostgresWorkerStore, type WorkerContextRequest, type WorkerStore } from "./store.js";
 import { HttpWebhookSender, type WebhookPayload, type WebhookSender } from "./webhook.js";
 
@@ -73,10 +74,42 @@ export function buildServer(
   const webhookSender = dependencies.webhookSender ?? new HttpWebhookSender();
   const processor = new ContextJobProcessor(store, new ResearchPipeline(providers), webhookSender);
   const server = Fastify({
+    bodyLimit: 64 * 1024,
     logger: {
       level: env.LOG_LEVEL,
     },
   });
+
+  if (env.NODE_ENV === "production") {
+    server.addHook("preHandler", async (request, reply) => {
+      if (!request.url.startsWith("/v1/jobs/context")) {
+        return;
+      }
+
+      const signatureHeader = request.headers["upstash-signature"];
+      const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
+      const tokenHeader = request.headers["x-supacontext-worker-token"];
+      const internalToken = Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader;
+      const validInternalToken = verifyInternalToken({
+        candidate: internalToken,
+        expected: env.WORKER_INTERNAL_TOKEN,
+      });
+      const validQstashSignature = verifyQstashSignature({
+        signature,
+        currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY,
+        nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY,
+      });
+
+      if (!validInternalToken && !validQstashSignature) {
+        return reply.code(401).send({
+          error: {
+            code: "unauthorized",
+            message: "Invalid QStash signature.",
+          },
+        });
+      }
+    });
+  }
 
   server.addHook("onClose", async () => {
     await store.close();
@@ -94,7 +127,7 @@ export function buildServer(
     if (!parsed.success) {
       return reply.code(400).send({
         error: {
-          code: "INVALID_JOB",
+          code: "invalid_request",
           message: "Invalid context job payload.",
         },
       });
@@ -113,7 +146,7 @@ export function buildServer(
     if (!parsed.success) {
       return reply.code(400).send({
         error: {
-          code: "INVALID_JOB",
+          code: "invalid_request",
           message: "Invalid context job id.",
         },
       });
@@ -142,7 +175,7 @@ export class ContextJobProcessor {
         id: requestId,
         status: "failed",
         error: {
-          code: "REQUEST_NOT_FOUND",
+          code: "job_not_found",
           message: "Context request not found.",
         },
       };
@@ -223,20 +256,20 @@ function requestToPipelineInput(request: WorkerContextRequest): Parameters<Resea
 function normalizeJobFailure(error: unknown): { code: string; message: string } {
   if (error instanceof NormalizedProviderError) {
     return {
-      code: `PROVIDER_${error.provider.toUpperCase()}_FAILED`,
+      code: "provider_error",
       message: `${error.provider} provider failed while compiling context.`,
     };
   }
 
   if (error instanceof Error && error.message.includes("invalid JSON")) {
     return {
-      code: "MODEL_INVALID_JSON",
+      code: "invalid_model_output",
       message: "The research model returned invalid JSON after one repair attempt.",
     };
   }
 
   return {
-    code: "WORKER_FAILED",
+    code: "model_error",
     message: error instanceof Error ? error.message : "Context job failed.",
   };
 }

@@ -121,7 +121,7 @@ function assertIdempotencyRequestHash(row: ContextRequestSelectRow, expectedHash
   if (row.idempotency_request_hash !== expectedHash) {
     throw new ApiError(
       409,
-      "IDEMPOTENCY_KEY_CONFLICT",
+      "idempotency_key_conflict",
       "Idempotency-Key was already used with a different request payload.",
     );
   }
@@ -153,16 +153,17 @@ function mapUsageDenial(reason: Exclude<ReturnType<typeof authorizeUsage>, { all
   if (reason === "monthly_limit") {
     return new ApiError(
       402,
-      "MONTHLY_CREDIT_LIMIT_EXCEEDED",
+      "insufficient_credits",
       "API key monthly credit limit would be exceeded.",
+      { reason: "monthly_limit" },
     );
   }
 
   if (reason === "credits") {
-    return new ApiError(402, "INSUFFICIENT_CREDITS", "Insufficient account credits.");
+    return new ApiError(402, "insufficient_credits", "Insufficient account credits.");
   }
 
-  return new ApiError(403, "DEPTH_NOT_ALLOWED", "Requested depth is not allowed for this API key or plan.");
+  return new ApiError(403, "forbidden_depth", "Requested depth is not allowed for this API key or plan.");
 }
 
 function assertPlanSlug(value: string): PlanSlug {
@@ -366,7 +367,7 @@ export class PostgresContextStore implements ContextStore {
     const row = rows[0];
 
     if (!row) {
-      throw new ApiError(404, "NOT_FOUND", "Context request not found.");
+      throw new ApiError(404, "job_not_found", "Context request not found.");
     }
 
     return mapRequestRow(row);
@@ -421,7 +422,7 @@ export class PostgresContextStore implements ContextStore {
       const row = rows[0];
 
       if (!row) {
-        throw new ApiError(404, "NOT_FOUND", "Context request not found.");
+        throw new ApiError(404, "job_not_found", "Context request not found.");
       }
 
       return mapRequestRow(row);
@@ -592,7 +593,7 @@ export class PostgresContextStore implements ContextStore {
     const row = rows[0];
 
     if (!row) {
-      throw new ApiError(401, "INVALID_API_KEY", "Invalid API key.");
+      throw new ApiError(401, "unauthorized", "Invalid API key.");
     }
 
     return row;

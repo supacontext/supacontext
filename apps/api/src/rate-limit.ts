@@ -74,18 +74,18 @@ class UpstashRateLimiter implements RateLimiter {
         signal: AbortSignal.timeout(2_000),
       });
     } catch {
-      throw new ApiError(503, "RATE_LIMITED", "Rate limiter is unavailable.");
+      throw new ApiError(503, "rate_limited", "Rate limiter is unavailable.");
     }
 
     if (!response.ok) {
-      throw new ApiError(503, "RATE_LIMITED", "Rate limiter is unavailable.");
+      throw new ApiError(503, "rate_limited", "Rate limiter is unavailable.");
     }
 
     const data = (await response.json()) as Array<{ result?: unknown }>;
     const count = Number(data[0]?.result ?? 0);
 
     if (!Number.isFinite(count)) {
-      throw new ApiError(503, "RATE_LIMITED", "Rate limiter returned an invalid response.");
+      throw new ApiError(503, "rate_limited", "Rate limiter returned an invalid response.");
     }
 
     return {

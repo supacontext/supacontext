@@ -11,6 +11,20 @@ const optionalUrl = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().trim().pipe(z.url()).optional(),
 );
+const optionalCsv = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z
+    .string()
+    .optional()
+    .transform((value) =>
+      value
+        ? value
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
+    ),
+);
 const port = z.coerce.number().int().positive().max(65535);
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info");
 
@@ -19,6 +33,8 @@ const sharedSchema = {
   APP_URL: requiredUrl,
   API_URL: requiredUrl,
   WORKER_URL: requiredUrl,
+  CORS_ALLOWED_ORIGINS: optionalCsv,
+  WORKER_INTERNAL_TOKEN: optionalString,
   DATABASE_URL: requiredString,
   API_KEY_HASH_SECRET: requiredString.min(32, "must be at least 32 characters"),
 };
@@ -38,6 +54,10 @@ const clerkSchema = {
 const creemSchema = {
   CREEM_API_KEY: requiredString,
   CREEM_WEBHOOK_SECRET: requiredString,
+  CREEM_STARTER_PRODUCT_ID: requiredString,
+  CREEM_BUILDER_PRODUCT_ID: requiredString,
+  CREEM_PRO_PRODUCT_ID: requiredString,
+  CREEM_SCALE_PRODUCT_ID: requiredString,
 };
 
 const upstashSchema = {
@@ -79,7 +99,12 @@ export const webEnvSchema = z.object({
   NODE_ENV: nodeEnv,
   APP_URL: requiredUrl,
   API_URL: requiredUrl,
+  WORKER_URL: requiredUrl,
+  WORKER_INTERNAL_TOKEN: optionalString,
+  DATABASE_URL: requiredString,
+  API_KEY_HASH_SECRET: requiredString.min(32, "must be at least 32 characters"),
   ...clerkSchema,
+  ...creemSchema,
   SUPABASE_URL: requiredUrl,
   SUPABASE_ANON_KEY: requiredString,
 });

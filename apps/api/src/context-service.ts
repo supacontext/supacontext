@@ -11,10 +11,11 @@ import {
 import { z } from "zod";
 import { authenticateApiKey } from "./auth.js";
 import { ApiError, formatZodError } from "./errors.js";
-import { createPlaceholderResult, toPublicContextResponse } from "./public-response.js";
+import { toPublicContextResponse } from "./public-response.js";
 import type { QstashClient } from "./qstash.js";
 import type { RateLimiter } from "./rate-limit.js";
 import { createContextRequestIdempotencyHash, type ContextStore } from "./store.js";
+import { mapWorkerFailureToApiError, type ContextJobRunner } from "./worker-runner.js";
 
 const idempotencyKeySchema = z.string().trim().min(1).max(255);
 const contextIdSchema = z.string().trim().regex(/^ctx_[A-Za-z0-9_-]+$/);
@@ -38,6 +39,7 @@ export class ContextService {
     private readonly store: ContextStore,
     private readonly rateLimiter: RateLimiter,
     private readonly qstash: QstashClient,
+    private readonly workerRunner: ContextJobRunner,
     private readonly apiKeyHashSecret: string,
   ) {}
 
@@ -149,7 +151,7 @@ export class ContextService {
       } catch (error) {
         await this.store.failContextRequest(
           accepted.request.id,
-          "QUEUE_UNAVAILABLE",
+          "internal_error",
           error instanceof Error ? error.message : "Could not enqueue context job.",
           { refundCredits: true },
         );
@@ -166,15 +168,18 @@ export class ContextService {
       };
     }
 
-    const running = await this.store.markRequestRunning(accepted.request.id);
-    const placeholderResult = createPlaceholderResult({
-      id: running.id,
-      query: running.query,
-      depth: running.depth,
-      platforms: running.platforms,
-      creditsCharged: running.spent_credits,
-    });
-    const completed = await this.store.completeContextRequest(running.id, placeholderResult);
+    await this.store.markRequestRunning(accepted.request.id);
+    const job = await this.workerRunner.runContextJob(accepted.request.id);
+
+    if (job.status === "failed") {
+      throw mapWorkerFailureToApiError(job.error);
+    }
+
+    const completed = await this.store.findRequestById(apiKey.workspace_id, accepted.request.id);
+
+    if (!completed) {
+      throw new ApiError(404, "job_not_found", "Context request not found.");
+    }
 
     return {
       statusCode: 200,
@@ -194,13 +199,13 @@ export class ContextService {
     const parsedId = contextIdSchema.safeParse(input.requestId);
 
     if (!parsedId.success) {
-      throw new ApiError(404, "NOT_FOUND", "Context request not found.");
+      throw new ApiError(404, "job_not_found", "Context request not found.");
     }
 
     const request = await this.store.findRequestById(apiKey.workspace_id, parsedId.data);
 
     if (!request) {
-      throw new ApiError(404, "NOT_FOUND", "Context request not found.");
+      throw new ApiError(404, "job_not_found", "Context request not found.");
     }
 
     return toPublicContextResponse(request);
@@ -231,7 +236,7 @@ export class ContextService {
     const parsed = idempotencyKeySchema.safeParse(value);
 
     if (!parsed.success) {
-      throw new ApiError(400, "INVALID_REQUEST", "Invalid Idempotency-Key header.");
+      throw new ApiError(400, "invalid_request", "Invalid Idempotency-Key header.");
     }
 
     return parsed.data;
@@ -244,7 +249,7 @@ export class ContextService {
     });
 
     if (!result.allowed) {
-      throw new ApiError(429, "RATE_LIMITED", "Rate limit exceeded.", {
+      throw new ApiError(429, "rate_limited", "Rate limit exceeded.", {
         limit: result.limit,
         remaining: result.remaining,
         reset_at: result.resetAt.toISOString(),
@@ -266,14 +271,14 @@ export class ContextService {
     const activeJobs = await this.store.countActiveJobs(input.workspaceId);
 
     if (activeJobs >= limits.concurrentJobs) {
-      throw new ApiError(429, "CONCURRENCY_LIMIT_EXCEEDED", "Concurrent job limit exceeded.");
+      throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
     }
 
     if (input.depth === "deep") {
       const activeDeepJobs = await this.store.countActiveJobs(input.workspaceId, "deep");
 
       if (activeDeepJobs >= limits.deepConcurrentJobs) {
-        throw new ApiError(429, "CONCURRENCY_LIMIT_EXCEEDED", "Concurrent deep job limit exceeded.");
+        throw new ApiError(429, "rate_limited", "Concurrent deep job limit exceeded.");
       }
     }
   }

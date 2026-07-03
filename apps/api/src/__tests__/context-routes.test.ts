@@ -21,6 +21,7 @@ import {
   type ContextStore,
   type FailContextRequestOptions,
 } from "../store.js";
+import type { ContextJobRunner, ContextJobRunResult } from "../worker-runner.js";
 
 const secret = "test-secret-with-at-least-32-characters";
 const rawKey = "sk_sc_test_key";
@@ -40,6 +41,11 @@ function createEnv(): ApiEnv {
     SUPABASE_SERVICE_ROLE_KEY: "service",
     CREEM_API_KEY: "creem",
     CREEM_WEBHOOK_SECRET: "creem_secret",
+    CREEM_STARTER_PRODUCT_ID: "starter_product",
+    CREEM_BUILDER_PRODUCT_ID: "builder_product",
+    CREEM_PRO_PRODUCT_ID: "pro_product",
+    CREEM_SCALE_PRODUCT_ID: "scale_product",
+    CORS_ALLOWED_ORIGINS: [],
     PORT: 3001,
     LOG_LEVEL: "fatal",
   };
@@ -70,7 +76,7 @@ class CapturingQstashClient implements QstashClient {
 
 class FailingQstashClient implements QstashClient {
   async enqueueContextJob(_input: EnqueueContextJobInput): Promise<EnqueueContextJobResult> {
-    throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+    throw new ApiError(503, "internal_error", "Could not enqueue context job.");
   }
 }
 
@@ -166,7 +172,7 @@ class InMemoryContextStore implements ContextStore {
     if (request && request.idempotency_request_hash !== idempotencyRequestHash) {
       throw new ApiError(
         409,
-        "IDEMPOTENCY_KEY_CONFLICT",
+        "idempotency_key_conflict",
         "Idempotency-Key was already used with a different request payload.",
       );
     }
@@ -211,20 +217,20 @@ class InMemoryContextStore implements ContextStore {
 
     if (!authorization.allowed) {
       if (authorization.reason === "credits") {
-        throw new ApiError(402, "INSUFFICIENT_CREDITS", "Insufficient account credits.");
+        throw new ApiError(402, "insufficient_credits", "Insufficient account credits.");
       }
 
       if (authorization.reason === "monthly_limit") {
         throw new ApiError(
           402,
-          "MONTHLY_CREDIT_LIMIT_EXCEEDED",
+          "insufficient_credits",
           "API key monthly credit limit would be exceeded.",
         );
       }
 
       throw new ApiError(
         403,
-        "DEPTH_NOT_ALLOWED",
+        "forbidden_depth",
         "Requested depth is not allowed for this API key or plan.",
       );
     }
@@ -309,12 +315,70 @@ class InMemoryContextStore implements ContextStore {
     const request = this.requests.get(requestId);
 
     if (!request) {
-      throw new ApiError(404, "NOT_FOUND", "Context request not found.");
+      throw new ApiError(404, "job_not_found", "Context request not found.");
     }
 
     request.status = status;
 
     return request;
+  }
+}
+
+function createCompletedResult(request: StoredContextRequest): StoredContextResultPayload {
+  const sources = request.platforms.map((platform, index) => ({
+    id: `src_${index + 1}`,
+    title: `${platform} source`,
+    url: `https://example.com/supacontext/${platform}`,
+    platform,
+  }));
+
+  return {
+    answer: `Worker-backed context for "${request.query}".`,
+    context_pack: [
+      {
+        claim: "The request was processed by the worker runner.",
+        confidence: "high",
+        supporting_sources: sources.map((source) => source.id),
+      },
+    ],
+    sources,
+    gaps: [],
+    usage: {
+      credits_charged: request.spent_credits,
+      depth: request.depth,
+      platforms_used: request.platforms,
+      sources_considered: sources.length,
+      sources_used: sources.length,
+      cached: false,
+    },
+  };
+}
+
+class CompletingWorkerRunner implements ContextJobRunner {
+  constructor(private readonly store: InMemoryContextStore) {}
+
+  async runContextJob(requestId: string): Promise<ContextJobRunResult> {
+    const request = await this.store.findRequestById(workspaceId, requestId);
+
+    if (!request) {
+      return {
+        id: requestId,
+        status: "failed",
+        error: {
+          code: "job_not_found",
+          message: "Context job not found.",
+        },
+      };
+    }
+
+    const result = createCompletedResult(request);
+    await this.store.completeContextRequest(requestId, result);
+
+    return {
+      id: requestId,
+      status: "completed",
+      result,
+    };
   }
 }
 
@@ -345,7 +409,7 @@ describe("context API routes", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({
       error: {
-        code: "INVALID_REQUEST",
+        code: "invalid_request",
       },
     });
 
@@ -379,9 +443,9 @@ describe("context API routes", () => {
     });
 
     expect(missing.statusCode).toBe(401);
-    expect(missing.json()).toMatchObject({ error: { code: "AUTH_REQUIRED" } });
+    expect(missing.json()).toMatchObject({ error: { code: "unauthorized" } });
     expect(invalid.statusCode).toBe(401);
-    expect(invalid.json()).toMatchObject({ error: { code: "INVALID_API_KEY" } });
+    expect(invalid.json()).toMatchObject({ error: { code: "unauthorized" } });
     expect(store.apiKey.last_used_at).toBeNull();
 
     await server.close();
@@ -419,20 +483,21 @@ describe("context API routes", () => {
     });
 
     expect(trialResponse.statusCode).toBe(403);
-    expect(trialResponse.json()).toMatchObject({ error: { code: "DEPTH_NOT_ALLOWED" } });
+    expect(trialResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
     expect(keyLimitResponse.statusCode).toBe(403);
-    expect(keyLimitResponse.json()).toMatchObject({ error: { code: "DEPTH_NOT_ALLOWED" } });
+    expect(keyLimitResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
 
     await trialServer.close();
     await keyLimitServer.close();
   });
 
-  it("deducts credits once and returns a completed synchronous placeholder result", async () => {
+  it("deducts credits once and returns a completed synchronous worker result", async () => {
     const store = new InMemoryContextStore("builder", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
       qstash: new CapturingQstashClient(),
+      workerRunner: new CompletingWorkerRunner(store),
     });
 
     const response = await server.inject({
@@ -473,7 +538,7 @@ describe("context API routes", () => {
       platforms: ["web"],
       status: "failed",
       spent_credits: 0,
-      error_code: "QUEUE_UNAVAILABLE",
+      error_code: "internal_error",
       error_message: "connect ETIMEDOUT qstash.internal",
       result: null,
     });
@@ -487,6 +552,7 @@ describe("context API routes", () => {
       store,
       rateLimiter: new AllowRateLimiter(),
       qstash: new CapturingQstashClient(),
+      workerRunner: new CompletingWorkerRunner(store),
     });
     const request = {
       method: "POST",
@@ -518,6 +584,7 @@ describe("context API routes", () => {
       store,
       rateLimiter: new AllowRateLimiter(),
       qstash: new CapturingQstashClient(),
+      workerRunner: new CompletingWorkerRunner(store),
     });
     const headers = authHeaders({
       "idempotency-key": "idem_conflict",
@@ -544,7 +611,7 @@ describe("context API routes", () => {
 
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(409);
-    expect(second.json()).toMatchObject({ error: { code: "IDEMPOTENCY_KEY_CONFLICT" } });
+    expect(second.json()).toMatchObject({ error: { code: "idempotency_key_conflict" } });
     expect(store.currentBalance).toBe(95);
     expect(store.ledger).toHaveLength(1);
 
@@ -570,7 +637,7 @@ describe("context API routes", () => {
     });
 
     expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ error: { code: "QUEUE_UNAVAILABLE" } });
+    expect(response.json()).toMatchObject({ error: { code: "internal_error" } });
     expect(store.currentBalance).toBe(100);
     expect(store.ledger).toEqual([
       { requestId: "ctx_test_1", credits: -20 },

@@ -9,13 +9,13 @@ export type ApiKeyStore = {
 
 function readBearerToken(authorization: string | undefined): string {
   if (!authorization) {
-    throw new ApiError(401, "AUTH_REQUIRED", "Missing Authorization bearer token.");
+    throw new ApiError(401, "unauthorized", "Missing Authorization bearer token.");
   }
 
   const [scheme, token, extra] = authorization.trim().split(/\s+/);
 
   if (scheme !== "Bearer" || !token || extra) {
-    throw new ApiError(401, "AUTH_REQUIRED", "Authorization must use Bearer authentication.");
+    throw new ApiError(401, "unauthorized", "Authorization must use Bearer authentication.");
   }
 
   return token;
@@ -31,7 +31,7 @@ export async function authenticateApiKey(input: {
   const apiKey = await input.store.findApiKeyByHash(keyHash);
 
   if (!apiKey || !verifyApiKey(rawKey, apiKey.key_hash, input.hashSecret)) {
-    throw new ApiError(401, "INVALID_API_KEY", "Invalid API key.");
+    throw new ApiError(401, "unauthorized", "Invalid API key.");
   }
 
   await input.store.markApiKeyUsed(apiKey.id);

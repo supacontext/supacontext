@@ -102,6 +102,9 @@ importers:
       next:
         specifier: ^16.2.10
         version: 16.2.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      postgres:
+        specifier: ^3.4.7
+        version: 3.4.9
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -263,6 +266,15 @@ importers:
       '@supacontext/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@supacontext/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@supacontext/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+
+  packages/sdk:
     devDependencies:
       '@supacontext/eslint-config':
         specifier: workspace:*

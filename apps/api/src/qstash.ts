@@ -47,7 +47,7 @@ class LocalWorkerQstashClient implements QstashClient {
         throw new Error(`Local worker returned status ${response.status}.`);
       }
     } catch {
-      throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+      throw new ApiError(503, "internal_error", "Could not enqueue context job.");
     }
 
     return {
@@ -80,11 +80,11 @@ class HttpQstashClient implements QstashClient {
         },
       );
     } catch {
-      throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+      throw new ApiError(503, "internal_error", "Could not enqueue context job.");
     }
 
     if (!response.ok) {
-      throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+      throw new ApiError(503, "internal_error", "Could not enqueue context job.");
     }
 
     const data = (await response.json()) as { messageId?: unknown };

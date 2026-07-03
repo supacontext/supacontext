@@ -2,59 +2,30 @@
 
 Developer API for giving AI agents compact, cited, up-to-date public context from web, Reddit, X, and YouTube.
 
-SupaContext is not a raw search API, scraper, or provider-output passthrough. Public responses must be compiled JSON context with citations.
+SupaContext is not a raw search API, scraper, or provider-output passthrough. Public responses are JSON-only compiled context with citations, gaps, and usage metadata.
 
-## Monorepo Layout
+## Services
 
-- `apps/web` - Next.js App Router dashboard shell.
-- `apps/api` - Node.js HTTP API service. `/v1/context` is intentionally not implemented yet.
-- `apps/worker` - Node.js worker service placeholder for QStash-triggered jobs.
-- `packages/config` - strict environment parsing.
-- `packages/core` - product constants, depth pricing, plan config, validation, API-key hashing.
+- `apps/web` - Next.js dashboard, docs, API-key management, usage, playground, billing UI, Creem dashboard routes.
+- `apps/api` - Public HTTP API. `POST /v1/context`, `GET /v1/context/:id`, `/health`.
+- `apps/worker` - QStash-triggered context worker. Runs provider orchestration and writes compiled public results.
+- `packages/core` - product constants, depth pricing, plans, validation, API-key hashing.
 - `packages/db` - Postgres client and typed query helpers.
-- `packages/billing` - Creem billing interfaces and placeholders.
-- `packages/usage` - usage authorization helpers.
-- `packages/providers` - typed provider interfaces and placeholder clients for Exa, FetchLayer, Xquik, Supadata, DeepSeek, and Voyage.
-- `packages/agent` - orchestration/result types only. No research system prompt is included.
-- `packages/ui` - shared React UI primitives.
-- `packages/eslint-config` and `packages/tsconfig` - shared tooling config.
+- `packages/billing` - typed Creem adapter, webhook signature verification, normalized billing events.
+- `packages/providers` - provider adapters with timeouts, retries, normalized errors, and safe metadata logging.
+- `packages/sdk` - dependency-free JavaScript SDK.
 
-## Requirements
-
-- Node.js 24+
-- pnpm 10+
-- Supabase CLI
-- Local or hosted Supabase Postgres
-- Clerk
-- Creem.io
-- Upstash Redis
-- Upstash QStash
-
-## Local Setup
+## Local Development
 
 ```bash
 pnpm install
 cp .env.example .env
-```
-
-Fill `.env` with local service credentials. `API_KEY_HASH_SECRET` must be at least 32 characters.
-
-Start Supabase locally:
-
-```bash
 pnpm supabase start
 pnpm supabase db reset
-```
-
-The initial schema is in `supabase/migrations/20260703170000_initial_schema.sql`.
-
-Run the workspace:
-
-```bash
 pnpm dev
 ```
 
-Useful filtered commands:
+Useful service commands:
 
 ```bash
 pnpm --filter @supacontext/web dev
@@ -62,7 +33,189 @@ pnpm --filter @supacontext/api dev
 pnpm --filter @supacontext/worker dev
 ```
 
+Health checks:
+
+```bash
+curl http://localhost:3001/health
+curl http://localhost:3002/health
+```
+
+## Public API
+
+```bash
+curl -X POST "$API_URL/v1/context" \
+  -H "Authorization: Bearer $SUPACONTEXT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: demo-1" \
+  -d '{"query":"What changed in AI agent tooling this week?","depth":"standard","platforms":["web","reddit"],"async":true}'
+```
+
+Poll async jobs:
+
+```bash
+curl "$API_URL/v1/context/ctx_..." \
+  -H "Authorization: Bearer $SUPACONTEXT_API_KEY"
+```
+
+## JavaScript SDK
+
+```ts
+import { createSupaContext } from "@supacontext/sdk";
+
+const supacontext = createSupaContext({
+  apiKey: process.env.SUPACONTEXT_API_KEY!,
+  baseUrl: process.env.SUPACONTEXT_API_URL,
+});
+
+const created = await supacontext.context.create({ query: "agent context APIs", async: true });
+const result = created.status === "queued" ? await supacontext.context.poll(created.id) : created;
+```
+
+Examples live in `packages/sdk/examples`.
+
+## Environment Variables
+
+Shared:
+
+- `NODE_ENV`
+- `APP_URL`
+- `API_URL`
+- `WORKER_URL`
+- `CORS_ALLOWED_ORIGINS` comma-separated browser origins allowed to call the public API
+- `WORKER_INTERNAL_TOKEN` shared by server-side web/API calls to the worker
+- `DATABASE_URL`
+- `API_KEY_HASH_SECRET` at least 32 characters
+
+Web and Clerk:
+
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `CLERK_WEBHOOK_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+API:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+- `QSTASH_TOKEN`
+- `PORT`
+- `LOG_LEVEL`
+
+Worker:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `QSTASH_CURRENT_SIGNING_KEY`
+- `QSTASH_NEXT_SIGNING_KEY`
+- `EXA_API_KEY`
+- `FETCHLAYER_API_KEY`
+- `XQUIK_API_KEY`
+- `SUPADATA_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `VOYAGE_API_KEY`
+- `WORKER_PORT`
+- `LOG_LEVEL`
+
+Creem billing:
+
+- `CREEM_API_KEY`
+- `CREEM_WEBHOOK_SECRET`
+- `CREEM_STARTER_PRODUCT_ID`
+- `CREEM_BUILDER_PRODUCT_ID`
+- `CREEM_PRO_PRODUCT_ID`
+- `CREEM_SCALE_PRODUCT_ID`
+
+Never expose service-role keys, provider keys, Creem secrets, QStash signing keys, Redis tokens, or `API_KEY_HASH_SECRET` to client code.
+
+## Database Setup
+
+The Supabase migration is `supabase/migrations/20260703170000_initial_schema.sql`.
+
+Local reset:
+
+```bash
+pnpm supabase db reset
+```
+
+Hosted Supabase:
+
+```bash
+supabase link --project-ref <project-ref>
+supabase db push
+```
+
+The schema includes profiles, workspaces, subscriptions, credit balances, API keys, context requests/results, provider call metadata, webhook receipts, and usage ledger triggers. `context_results` stores compiled public JSON only; provider raw payloads are not stored.
+
+## Billing
+
+Creem checkout is created from the dashboard billing page. The checkout metadata includes:
+
+- `workspace_id`
+- `plan`
+
+Configure the Creem webhook endpoint:
+
+```text
+https://<web-service-domain>/api/billing/creem/webhook
+```
+
+Handled events:
+
+- subscription created
+- subscription updated
+- subscription cancelled
+- payment succeeded
+- payment failed
+
+Credit grants are ledger entries with idempotency keys based on the Creem payment id. Duplicate webhooks do not double-grant. Successful monthly payments reset API-key month-to-date counters and grant the paid plan's monthly credits.
+
+The Creem adapter contains TODO comments around the exact checkout and portal HTTP endpoint names; verify those against Creem's current API before live billing traffic.
+
+## Railway Deployment
+
+Create three Railway services from this monorepo.
+
+Web service:
+
+```bash
+pnpm --filter @supacontext/web build
+pnpm --filter @supacontext/web start
+```
+
+API service:
+
+```bash
+pnpm --filter @supacontext/api build
+pnpm --filter @supacontext/api start
+```
+
+Worker service:
+
+```bash
+pnpm --filter @supacontext/worker build
+pnpm --filter @supacontext/worker start
+```
+
+Recommended Railway build command for each service:
+
+```bash
+pnpm install --frozen-lockfile && pnpm build
+```
+
+Set health checks to:
+
+- API: `/health`
+- Worker: `/health`
+- Web: `/`
+
 ## Verification
+
+Before deploying:
 
 ```bash
 pnpm typecheck
@@ -71,46 +224,4 @@ pnpm test
 pnpm build
 ```
 
-Current tests cover:
-
-- depth credit pricing
-- plan depth restrictions
-- credit value math
-- API-key generation, hashing, prefix storage, and verification
-
-## Database Notes
-
-The schema supports:
-
-- Clerk-mapped profiles
-- workspaces
-- plans and subscriptions
-- credit balances and immutable usage ledger entries
-- secure API keys with hash-only storage and display prefixes
-- context requests, request events, and compiled JSON results
-- provider call metadata without raw provider payload storage
-- webhook receipt tracking
-
-API keys are designed so the raw key is shown once, only the HMAC hash is stored, and the prefix is kept for display.
-
-## Environment Validation
-
-Environment parsing lives in `packages/config`. Apps call the parser at runtime, not import time, so builds and typechecks do not require real secrets.
-
-## Railway Deployment Shape
-
-Use separate Railway services from the same monorepo:
-
-- Web service: root command `pnpm --filter @supacontext/web start`, build command `pnpm build`.
-- API service: root command `pnpm --filter @supacontext/api start`, build command `pnpm build`.
-- Worker service: root command `pnpm --filter @supacontext/worker start`, build command `pnpm build`.
-
-Each service should receive only the environment variables it needs. Do not expose Supabase service-role keys, provider keys, Creem secrets, QStash signing keys, Redis tokens, or API key hash secrets to the browser.
-
-## Intentional Placeholders
-
-- No real provider API calls are implemented.
-- Creem billing has typed interfaces only.
-- The internal research agent system prompt is intentionally absent.
-- `POST /v1/context` is intentionally left for the next implementation phase.
-
+Targeted checks covered by tests include API-key auth, depth restrictions, monthly API-key caps, ledger debits/refunds, idempotent context creation, async queue lifecycle, provider failure handling, invalid model JSON repair/failure, safe public responses, Creem signature/event normalization, and SDK basics.

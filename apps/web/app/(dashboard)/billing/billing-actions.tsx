@@ -46,10 +46,37 @@ export function BillingActionButton({ plan, label }: { plan: PaidPlan; label: st
 }
 
 export function ManageBillingButton() {
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function openPortal() {
+    setPending(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/dashboard/billing/portal", {
+        method: "POST",
+      });
+      const data = (await response.json()) as { url?: string; error?: { message?: string } };
+
+      if (!response.ok || !data.url) {
+        setMessage(data.error?.message ?? "Billing portal is not available.");
+        return;
+      }
+
+      window.location.href = data.url;
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <button className="button secondaryButton" disabled type="button">
-      <ExternalLink aria-hidden="true" size={16} />
-      Manage billing
-    </button>
+    <div className="billingAction">
+      <button className="button secondaryButton" disabled={pending} onClick={openPortal} type="button">
+        <ExternalLink aria-hidden="true" size={16} />
+        {pending ? "Opening..." : "Manage billing"}
+      </button>
+      {message ? <p className="inlineError">{message}</p> : null}
+    </div>
   );
 }

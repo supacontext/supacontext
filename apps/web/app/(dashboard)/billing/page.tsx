@@ -16,8 +16,7 @@ export default async function BillingPage() {
           <p className="eyebrow">Billing</p>
           <h1>Plan and credit state</h1>
           <p className="mutedText">
-            Creem checkout is wired as a typed shell. Real plan changes require Creem credentials and
-            implementation.
+            Upgrade, change plans, open the customer portal, and track subscription credit renewals.
           </p>
         </div>
         <ManageBillingButton />
@@ -27,7 +26,10 @@ export default async function BillingPage() {
         <article className="metricCard">
           <span>Current plan</span>
           <strong>{currentPlan.name}</strong>
-          <p>{currentPlan.status}</p>
+          <p>
+            {currentPlan.status}
+            {currentPlan.cancelAtPeriodEnd ? " - cancels at period end" : ""}
+          </p>
         </article>
         <article className="metricCard">
           <span>Credits per month</span>

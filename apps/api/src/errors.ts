@@ -1,18 +1,17 @@
 import type { ZodError } from "zod";
 
 export type ApiErrorCode =
-  | "AUTH_REQUIRED"
-  | "INVALID_API_KEY"
-  | "INVALID_REQUEST"
-  | "NOT_FOUND"
-  | "DEPTH_NOT_ALLOWED"
-  | "MONTHLY_CREDIT_LIMIT_EXCEEDED"
-  | "INSUFFICIENT_CREDITS"
-  | "RATE_LIMITED"
-  | "CONCURRENCY_LIMIT_EXCEEDED"
-  | "QUEUE_UNAVAILABLE"
-  | "IDEMPOTENCY_KEY_CONFLICT"
-  | "INTERNAL_ERROR";
+  | "invalid_request"
+  | "unauthorized"
+  | "forbidden_depth"
+  | "insufficient_credits"
+  | "rate_limited"
+  | "provider_error"
+  | "model_error"
+  | "invalid_model_output"
+  | "job_not_found"
+  | "idempotency_key_conflict"
+  | "internal_error";
 
 export class ApiError extends Error {
   constructor(
@@ -56,7 +55,7 @@ export function formatError(error: ApiError): {
 export function formatZodError(error: ZodError): ApiError {
   return new ApiError(
     400,
-    "INVALID_REQUEST",
+    "invalid_request",
     "Request validation failed.",
     error.issues.map((issue) => ({
       path: issue.path.join("."),

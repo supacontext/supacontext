@@ -10,11 +10,13 @@ import { ApiError, formatError, formatZodError } from "./errors.js";
 import { createQstashClient, type QstashClient } from "./qstash.js";
 import { createRateLimiter, type RateLimiter } from "./rate-limit.js";
 import { PostgresContextStore, type ContextStore } from "./store.js";
+import { HttpContextJobRunner, type ContextJobRunner } from "./worker-runner.js";
 
 export type ServerDependencies = {
   store?: ContextStore;
   rateLimiter?: RateLimiter;
   qstash?: QstashClient;
+  workerRunner?: ContextJobRunner;
   contextService?: ContextService;
 };
 
@@ -24,6 +26,7 @@ function readHeader(value: string | string[] | undefined): string | undefined {
 
 export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}): FastifyInstance {
   const server = Fastify({
+    bodyLimit: 64 * 1024,
     logger: {
       level: env.LOG_LEVEL,
     },
@@ -53,10 +56,25 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
     });
   const contextService =
     dependencies.contextService ??
-    new ContextService(store, rateLimiter, qstash, env.API_KEY_HASH_SECRET);
+    new ContextService(
+      store,
+      rateLimiter,
+      qstash,
+      dependencies.workerRunner ?? new HttpContextJobRunner(env.WORKER_URL, env.WORKER_INTERNAL_TOKEN),
+      env.API_KEY_HASH_SECRET,
+    );
 
   server.register(cors, {
-    origin: env.APP_URL,
+    allowedHeaders: ["authorization", "content-type", "idempotency-key"],
+    methods: ["GET", "POST", "OPTIONS"],
+    origin: (origin, callback) => {
+      if (!origin || origin === env.APP_URL || env.CORS_ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new ApiError(403, "invalid_request", "CORS origin is not allowed."), false);
+    },
   });
 
   server.setErrorHandler((error, request, reply) => {
@@ -73,7 +91,7 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
 
     request.log.error(error);
     void reply.code(500).send(
-      formatError(new ApiError(500, "INTERNAL_ERROR", "Internal server error.")),
+      formatError(new ApiError(500, "internal_error", "Internal server error.")),
     );
   });
 

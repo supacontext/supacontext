@@ -64,7 +64,7 @@ export type ResearchPrompt = {
 };
 
 export function loadResearchPromptTemplate(): string {
-  // Product prompt tuning is intentionally deferred. Keep this concise placeholder easy to replace.
+  // Product prompt tuning is intentionally deferred. Keep this concise default easy to replace.
   return [
     "You are SupaContext's research compiler.",
     "Return compact JSON only.",
