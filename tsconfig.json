@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./packages/core" },
+    { "path": "./packages/billing" },
+    { "path": "./packages/db" },
+    { "path": "./packages/usage" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/providers" },
+    { "path": "./packages/ui" },
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" },
+    { "path": "./apps/web" }
+  ]
+}

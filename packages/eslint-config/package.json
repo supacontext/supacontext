@@ -1,0 +1,26 @@
+{
+  "name": "@supacontext/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.39.1",
+    "globals": "^16.5.0",
+    "typescript-eslint": "^8.62.1"
+  },
+  "devDependencies": {
+    "@supacontext/tsconfig": "workspace:*",
+    "eslint": "^9.39.1"
+  }
+}
+

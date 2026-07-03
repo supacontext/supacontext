@@ -1,0 +1,25 @@
+{
+  "name": "@supacontext/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "eslint . --max-warnings 0",
+    "start": "next start",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supacontext/core": "workspace:*",
+    "@supacontext/ui": "workspace:*",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@supacontext/eslint-config": "workspace:*",
+    "@supacontext/tsconfig": "workspace:*"
+  }
+}
+
