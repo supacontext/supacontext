@@ -27,6 +27,35 @@ export class NoopQstashClient implements QstashClient {
   }
 }
 
+class LocalWorkerQstashClient implements QstashClient {
+  constructor(private readonly workerUrl: string) {}
+
+  async enqueueContextJob(input: EnqueueContextJobInput): Promise<EnqueueContextJobResult> {
+    const destination = `${this.workerUrl.replace(/\/$/, "")}/v1/jobs/context`;
+
+    try {
+      const response = await fetch(destination, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Local worker returned status ${response.status}.`);
+      }
+    } catch {
+      throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+    }
+
+    return {
+      messageId: `local_${input.requestId}`,
+    };
+  }
+}
+
 class HttpQstashClient implements QstashClient {
   constructor(
     private readonly token: string,
@@ -81,7 +110,7 @@ export function createQstashClient(input: {
     throw new Error("QSTASH_TOKEN must be configured in production.");
   }
 
-  input.warn?.("QStash is not configured; using in-memory development queue acknowledgements.");
+  input.warn?.("QStash is not configured; dispatching context jobs directly to the local worker.");
 
-  return new NoopQstashClient();
+  return new LocalWorkerQstashClient(input.workerUrl);
 }

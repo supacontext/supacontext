@@ -49,12 +49,12 @@ const upstashSchema = {
 };
 
 const providerSchema = {
-  EXA_API_KEY: requiredString,
-  FETCHLAYER_API_KEY: requiredString,
-  XQUIK_API_KEY: requiredString,
-  SUPADATA_API_KEY: requiredString,
-  DEEPSEEK_API_KEY: requiredString,
-  VOYAGE_API_KEY: requiredString,
+  EXA_API_KEY: optionalString,
+  FETCHLAYER_API_KEY: optionalString,
+  XQUIK_API_KEY: optionalString,
+  SUPADATA_API_KEY: optionalString,
+  DEEPSEEK_API_KEY: optionalString,
+  VOYAGE_API_KEY: optionalString,
 };
 
 export const apiEnvSchema = z.object({
