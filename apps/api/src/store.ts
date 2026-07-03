@@ -378,17 +378,22 @@ export class PostgresContextStore implements ContextStore {
   ): Promise<StoredContextRequest> {
     return this.sql.begin(async (transaction) => {
       const rows = await transaction<ContextRequestSelectRow[]>`
-        with saved_result as (
+        with target_request as (
+          select id
+          from context_requests
+          where id = ${requestId}
+        ),
+        saved_result as (
           insert into context_results (
             context_request_id,
             response_json,
             citation_count
           )
-          values (
-            ${requestId},
+          select
+            target_request.id,
             ${transaction.json(result as postgres.JSONValue)},
             ${result.sources.length}
-          )
+          from target_request
           on conflict (context_request_id) do update
           set
             response_json = excluded.response_json,
