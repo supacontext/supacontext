@@ -1,4 +1,11 @@
-import type { ContextDepth, LedgerEventType, Platform, ProviderName, RequestStatus } from "@supacontext/core";
+import type {
+  ContextDepth,
+  LedgerEventType,
+  Platform,
+  PlatformMode,
+  ProviderName,
+  RequestStatus,
+} from "@supacontext/core";
 
 export type ApiKeyRow = {
   id: string;
@@ -34,11 +41,30 @@ export type ContextRequestRow = {
   id: string;
   workspace_id: string;
   api_key_id: string | null;
+  query: string;
   depth: ContextDepth;
-  sources: Platform[];
+  platforms: Platform[];
+  platform_mode: PlatformMode;
   status: RequestStatus;
   requested_credits: number;
   spent_credits: number;
+  idempotency_key: string | null;
+  webhook_url: string | null;
+  metadata: unknown;
+  qstash_message_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type ContextResultRow = {
+  id: string;
+  context_request_id: string;
+  response_json: unknown;
+  citation_count: number;
   created_at: Date;
 };
 
@@ -51,4 +77,3 @@ export type ProviderCallLogRow = {
   duration_ms: number | null;
   created_at: Date;
 };
-

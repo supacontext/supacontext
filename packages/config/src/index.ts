@@ -3,6 +3,14 @@ import { z } from "zod";
 const nodeEnv = z.enum(["development", "test", "production"]).default("development");
 const requiredString = z.string().trim().min(1, "is required");
 const requiredUrl = z.string().trim().url();
+const optionalString = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
+const optionalUrl = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().url().optional(),
+);
 const port = z.coerce.number().int().positive();
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info");
 
@@ -33,11 +41,11 @@ const creemSchema = {
 };
 
 const upstashSchema = {
-  UPSTASH_REDIS_REST_URL: requiredUrl,
-  UPSTASH_REDIS_REST_TOKEN: requiredString,
-  QSTASH_TOKEN: requiredString,
-  QSTASH_CURRENT_SIGNING_KEY: requiredString,
-  QSTASH_NEXT_SIGNING_KEY: requiredString,
+  UPSTASH_REDIS_REST_URL: optionalUrl,
+  UPSTASH_REDIS_REST_TOKEN: optionalString,
+  QSTASH_TOKEN: optionalString,
+  QSTASH_CURRENT_SIGNING_KEY: optionalString,
+  QSTASH_NEXT_SIGNING_KEY: optionalString,
 };
 
 const providerSchema = {
@@ -113,4 +121,3 @@ export function getWorkerEnv(source?: NodeJS.ProcessEnv): WorkerEnv {
 export function getWebEnv(source?: NodeJS.ProcessEnv): WebEnv {
   return parseEnv(webEnvSchema, source);
 }
-

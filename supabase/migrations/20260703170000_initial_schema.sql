@@ -2,7 +2,7 @@ create extension if not exists pgcrypto;
 
 create type public.context_depth as enum ('fast', 'standard', 'thorough', 'deep');
 create type public.platform as enum ('web', 'reddit', 'x', 'youtube');
-create type public.request_status as enum ('queued', 'running', 'succeeded', 'failed', 'cancelled');
+create type public.request_status as enum ('queued', 'running', 'completed', 'failed', 'cancelled');
 create type public.plan_slug as enum ('trial', 'starter', 'builder', 'pro', 'scale');
 create type public.provider as enum ('exa', 'fetchlayer', 'xquik', 'supadata', 'deepseek', 'voyage');
 create type public.ledger_event_type as enum ('grant', 'debit', 'refund', 'adjustment', 'expiration');
@@ -106,7 +106,7 @@ create table public.api_keys (
   name text not null,
   key_hash text not null unique,
   prefix text not null,
-  max_depth public.context_depth not null default 'standard',
+  max_depth public.context_depth not null default 'deep',
   monthly_credit_limit integer check (monthly_credit_limit is null or monthly_credit_limit >= 0),
   month_to_date_credits integer not null default 0 check (month_to_date_credits >= 0),
   last_used_at timestamptz,
@@ -124,16 +124,19 @@ before update on public.api_keys
 for each row execute function public.set_updated_at();
 
 create table public.context_requests (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key,
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   api_key_id uuid references public.api_keys(id) on delete set null,
   query text not null,
   depth public.context_depth not null,
-  sources public.platform[] not null,
+  platforms public.platform[] not null,
+  platform_mode text not null default 'auto' check (platform_mode in ('auto', 'manual')),
   status public.request_status not null default 'queued',
   requested_credits integer not null check (requested_credits > 0),
   spent_credits integer not null default 0 check (spent_credits >= 0),
   idempotency_key text,
+  webhook_url text,
+  metadata jsonb not null default '{}'::jsonb,
   qstash_message_id text,
   error_code text,
   error_message text,
@@ -141,7 +144,7 @@ create table public.context_requests (
   completed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  check (cardinality(sources) between 1 and 4)
+  check (cardinality(platforms) between 1 and 4)
 );
 
 create unique index context_requests_workspace_idempotency_key_idx
@@ -157,7 +160,7 @@ for each row execute function public.set_updated_at();
 
 create table public.context_request_events (
   id uuid primary key default gen_random_uuid(),
-  context_request_id uuid not null references public.context_requests(id) on delete cascade,
+  context_request_id text not null references public.context_requests(id) on delete cascade,
   event_type text not null,
   message text,
   metadata jsonb not null default '{}'::jsonb,
@@ -168,7 +171,7 @@ create index context_request_events_request_id_idx on public.context_request_eve
 
 create table public.context_results (
   id uuid primary key default gen_random_uuid(),
-  context_request_id uuid not null unique references public.context_requests(id) on delete cascade,
+  context_request_id text not null unique references public.context_requests(id) on delete cascade,
   response_json jsonb not null,
   citation_count integer not null default 0 check (citation_count >= 0),
   created_at timestamptz not null default now()
@@ -182,7 +185,7 @@ create table public.usage_ledger (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   event_type public.ledger_event_type not null,
   credits integer not null check (credits <> 0),
-  context_request_id uuid references public.context_requests(id) on delete set null,
+  context_request_id text references public.context_requests(id) on delete set null,
   idempotency_key text,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
@@ -217,7 +220,7 @@ for each row execute function public.apply_usage_ledger_to_balance();
 
 create table public.provider_call_logs (
   id uuid primary key default gen_random_uuid(),
-  context_request_id uuid references public.context_requests(id) on delete set null,
+  context_request_id text references public.context_requests(id) on delete set null,
   provider public.provider not null,
   platform public.platform,
   status_code integer,
@@ -264,4 +267,3 @@ alter table public.context_results enable row level security;
 alter table public.usage_ledger enable row level security;
 alter table public.provider_call_logs enable row level security;
 alter table public.webhooks enable row level security;
-
