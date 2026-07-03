@@ -37,6 +37,18 @@ function emptyUsage(request: StoredContextRequest): PublicContextUsage {
   };
 }
 
+function safeFailureGap(request: StoredContextRequest): string[] {
+  if (request.status !== "failed" || !request.error_code) {
+    return [];
+  }
+
+  if (request.error_code === "QUEUE_UNAVAILABLE") {
+    return ["The context request could not be queued. Please retry."];
+  }
+
+  return ["The context request failed. Please retry."];
+}
+
 export function toPublicContextResponse(request: StoredContextRequest): PublicContextResponse {
   const result = request.result;
 
@@ -48,7 +60,7 @@ export function toPublicContextResponse(request: StoredContextRequest): PublicCo
     answer: result?.answer ?? null,
     context_pack: result?.context_pack ?? [],
     sources: result?.sources ?? [],
-    gaps: result?.gaps ?? (request.error_message ? [request.error_message] : []),
+    gaps: result?.gaps ?? safeFailureGap(request),
     usage: result?.usage ?? emptyUsage(request),
   };
 }

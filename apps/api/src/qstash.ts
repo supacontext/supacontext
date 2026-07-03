@@ -35,17 +35,24 @@ class HttpQstashClient implements QstashClient {
 
   async enqueueContextJob(input: EnqueueContextJobInput): Promise<EnqueueContextJobResult> {
     const destination = `${this.workerUrl.replace(/\/$/, "")}/v1/jobs/context`;
-    const response = await fetch(
-      `https://qstash.upstash.io/v2/publish/${encodeURIComponent(destination)}`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.token}`,
-          "content-type": "application/json",
+    let response: Response;
+
+    try {
+      response = await fetch(
+        `https://qstash.upstash.io/v2/publish/${encodeURIComponent(destination)}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${this.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(5_000),
         },
-        body: JSON.stringify(input),
-      },
-    );
+      );
+    } catch {
+      throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+    }
 
     if (!response.ok) {
       throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");

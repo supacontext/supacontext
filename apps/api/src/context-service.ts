@@ -12,7 +12,7 @@ import { ApiError, formatZodError } from "./errors.js";
 import { createPlaceholderResult, toPublicContextResponse } from "./public-response.js";
 import type { QstashClient } from "./qstash.js";
 import { PLAN_RATE_LIMITS, type RateLimiter } from "./rate-limit.js";
-import type { ContextStore } from "./store.js";
+import { createContextRequestIdempotencyHash, type ContextStore } from "./store.js";
 
 const idempotencyKeySchema = z.string().trim().min(1).max(255);
 const contextIdSchema = z.string().trim().regex(/^ctx_[A-Za-z0-9_-]+$/);
@@ -56,9 +56,23 @@ export class ContextService {
     }
 
     const idempotencyKey = this.parseIdempotencyKey(input.idempotencyKey);
+    const platformSelection = this.resolvePlatforms(parsed.data.platforms);
+    const idempotencyRequestHash = createContextRequestIdempotencyHash({
+      query: parsed.data.query,
+      depth: parsed.data.depth,
+      platforms: platformSelection.platforms,
+      platformMode: platformSelection.mode,
+      async: parsed.data.async,
+      webhookUrl: parsed.data.webhook_url ?? null,
+      metadata: parsed.data.metadata ?? {},
+    });
 
     if (idempotencyKey) {
-      const existing = await this.store.findRequestByIdempotencyKey(apiKey.workspace_id, idempotencyKey);
+      const existing = await this.store.findRequestByIdempotencyKey(
+        apiKey.workspace_id,
+        idempotencyKey,
+        idempotencyRequestHash,
+      );
 
       if (existing) {
         if (parsed.data.async && existing.status === "queued") {
@@ -88,7 +102,6 @@ export class ContextService {
       isAsync: parsed.data.async,
     });
 
-    const platformSelection = this.resolvePlatforms(parsed.data.platforms);
     const accepted = await this.store.acceptContextRequest({
       apiKey,
       plan,
@@ -96,6 +109,7 @@ export class ContextService {
       depth: parsed.data.depth,
       platforms: platformSelection.platforms,
       platformMode: platformSelection.mode,
+      async: parsed.data.async,
       idempotencyKey,
       webhookUrl: parsed.data.webhook_url ?? null,
       metadata: parsed.data.metadata ?? {},
@@ -135,6 +149,7 @@ export class ContextService {
           accepted.request.id,
           "QUEUE_UNAVAILABLE",
           error instanceof Error ? error.message : "Could not enqueue context job.",
+          { refundCredits: true },
         );
         throw error;
       }

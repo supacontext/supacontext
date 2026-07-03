@@ -135,6 +135,7 @@ create table public.context_requests (
   requested_credits integer not null check (requested_credits > 0),
   spent_credits integer not null default 0 check (spent_credits >= 0),
   idempotency_key text,
+  idempotency_request_hash text,
   webhook_url text,
   metadata jsonb not null default '{}'::jsonb,
   qstash_message_id text,

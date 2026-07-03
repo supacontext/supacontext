@@ -11,6 +11,7 @@ export type ApiErrorCode =
   | "RATE_LIMITED"
   | "CONCURRENCY_LIMIT_EXCEEDED"
   | "QUEUE_UNAVAILABLE"
+  | "IDEMPOTENCY_KEY_CONFLICT"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {

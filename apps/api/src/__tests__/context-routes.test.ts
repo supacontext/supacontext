@@ -10,14 +10,16 @@ import {
 import type { ApiKeyRow } from "@supacontext/db";
 import { authorizeUsage } from "@supacontext/usage";
 import { ApiError } from "../errors.js";
-import type { StoredContextRequest, StoredContextResultPayload } from "../public-response.js";
+import { toPublicContextResponse, type StoredContextRequest, type StoredContextResultPayload } from "../public-response.js";
 import type { EnqueueContextJobInput, EnqueueContextJobResult, QstashClient } from "../qstash.js";
 import type { RateLimitInput, RateLimitResult, RateLimiter } from "../rate-limit.js";
 import { buildServer } from "../server.js";
-import type {
-  AcceptContextRequestInput,
-  AcceptContextRequestResult,
-  ContextStore,
+import {
+  createContextRequestIdempotencyHash,
+  type AcceptContextRequestInput,
+  type AcceptContextRequestResult,
+  type ContextStore,
+  type FailContextRequestOptions,
 } from "../store.js";
 
 const secret = "test-secret-with-at-least-32-characters";
@@ -66,9 +68,16 @@ class CapturingQstashClient implements QstashClient {
   }
 }
 
+class FailingQstashClient implements QstashClient {
+  async enqueueContextJob(_input: EnqueueContextJobInput): Promise<EnqueueContextJobResult> {
+    throw new ApiError(503, "QUEUE_UNAVAILABLE", "Could not enqueue context job.");
+  }
+}
+
 type InternalRequest = StoredContextRequest & {
   workspace_id: string;
   idempotency_key: string | null;
+  idempotency_request_hash: string | null;
 };
 
 class InMemoryContextStore implements ContextStore {
@@ -145,13 +154,24 @@ class InMemoryContextStore implements ContextStore {
   async findRequestByIdempotencyKey(
     workspaceIdToRead: string,
     idempotencyKey: string,
+    idempotencyRequestHash: string,
   ): Promise<StoredContextRequest | null> {
-    return (
+    const request =
       [...this.requests.values()].find(
-        (request) =>
-          request.workspace_id === workspaceIdToRead && request.idempotency_key === idempotencyKey,
-      ) ?? null
-    );
+        (storedRequest) =>
+          storedRequest.workspace_id === workspaceIdToRead &&
+          storedRequest.idempotency_key === idempotencyKey,
+      ) ?? null;
+
+    if (request && request.idempotency_request_hash !== idempotencyRequestHash) {
+      throw new ApiError(
+        409,
+        "IDEMPOTENCY_KEY_CONFLICT",
+        "Idempotency-Key was already used with a different request payload.",
+      );
+    }
+
+    return request;
   }
 
   async countActiveJobs(workspaceIdToRead: string, depth?: ContextDepth): Promise<number> {
@@ -168,6 +188,7 @@ class InMemoryContextStore implements ContextStore {
       const existing = await this.findRequestByIdempotencyKey(
         input.apiKey.workspace_id,
         input.idempotencyKey,
+        createContextRequestIdempotencyHash(input),
       );
 
       if (existing) {
@@ -213,6 +234,9 @@ class InMemoryContextStore implements ContextStore {
       id: `ctx_test_${this.nextRequestNumber}`,
       workspace_id: input.apiKey.workspace_id,
       idempotency_key: input.idempotencyKey,
+      idempotency_request_hash: input.idempotencyKey
+        ? createContextRequestIdempotencyHash(input)
+        : null,
       query: input.query,
       depth: input.depth,
       platforms: input.platforms,
@@ -255,8 +279,25 @@ class InMemoryContextStore implements ContextStore {
 
   async attachQstashMessageId(_requestId: string, _messageId: string): Promise<void> {}
 
-  async failContextRequest(requestId: string, errorCode: string, errorMessage: string): Promise<void> {
+  async failContextRequest(
+    requestId: string,
+    errorCode: string,
+    errorMessage: string,
+    options: FailContextRequestOptions = {},
+  ): Promise<void> {
     const request = this.updateStatus(requestId, "failed") as InternalRequest;
+
+    if (options.refundCredits && request.spent_credits > 0) {
+      const credits = request.spent_credits;
+
+      request.spent_credits = 0;
+      this.balance += credits;
+      this.apiKey.month_to_date_credits -= credits;
+      this.ledger.push({
+        requestId,
+        credits,
+      });
+    }
 
     request.error_code = errorCode;
     request.error_message = errorMessage;
@@ -424,6 +465,22 @@ describe("context API routes", () => {
     await server.close();
   });
 
+  it("does not expose internal failure messages in public responses", () => {
+    const response = toPublicContextResponse({
+      id: "ctx_failed",
+      query: "SupaContext",
+      depth: "standard",
+      platforms: ["web"],
+      status: "failed",
+      spent_credits: 0,
+      error_code: "QUEUE_UNAVAILABLE",
+      error_message: "connect ETIMEDOUT qstash.internal",
+      result: null,
+    });
+
+    expect(response.gaps).toEqual(["The context request could not be queued. Please retry."]);
+  });
+
   it("does not double-charge idempotent retries", async () => {
     const store = new InMemoryContextStore("builder", 100);
     const server = buildServer(createEnv(), {
@@ -451,6 +508,75 @@ describe("context API routes", () => {
     expect(second.json().id).toBe(first.json().id);
     expect(store.currentBalance).toBe(95);
     expect(store.ledger).toHaveLength(1);
+
+    await server.close();
+  });
+
+  it("rejects idempotency-key reuse with a different request body", async () => {
+    const store = new InMemoryContextStore("builder", 100);
+    const server = buildServer(createEnv(), {
+      store,
+      rateLimiter: new AllowRateLimiter(),
+      qstash: new CapturingQstashClient(),
+    });
+    const headers = authHeaders({
+      "idempotency-key": "idem_conflict",
+    });
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers,
+      payload: {
+        query: "SupaContext pricing",
+        depth: "fast",
+      },
+    });
+    const second = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers,
+      payload: {
+        query: "Different query",
+        depth: "fast",
+      },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(409);
+    expect(second.json()).toMatchObject({ error: { code: "IDEMPOTENCY_KEY_CONFLICT" } });
+    expect(store.currentBalance).toBe(95);
+    expect(store.ledger).toHaveLength(1);
+
+    await server.close();
+  });
+
+  it("refunds credits when asynchronous enqueue fails", async () => {
+    const store = new InMemoryContextStore("builder", 100);
+    const server = buildServer(createEnv(), {
+      store,
+      rateLimiter: new AllowRateLimiter(),
+      qstash: new FailingQstashClient(),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers: authHeaders(),
+      payload: {
+        query: "new context APIs",
+        async: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ error: { code: "QUEUE_UNAVAILABLE" } });
+    expect(store.currentBalance).toBe(100);
+    expect(store.ledger).toEqual([
+      { requestId: "ctx_test_1", credits: -20 },
+      { requestId: "ctx_test_1", credits: 20 },
+    ]);
+    expect(store.apiKey.month_to_date_credits).toBe(0);
 
     await server.close();
   });

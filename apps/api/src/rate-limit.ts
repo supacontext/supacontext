@@ -92,17 +92,24 @@ class UpstashRateLimiter implements RateLimiter {
     const windowStart = Math.floor(now / 60_000) * 60_000;
     const resetAt = windowStart + 60_000;
     const key = `supacontext:rate:${input.workspaceId}:${windowStart}`;
-    const response = await fetch(`${this.redisUrl.replace(/\/$/, "")}/pipeline`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.redisToken}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify([
-        ["INCR", key],
-        ["EXPIRE", key, "60"],
-      ]),
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(`${this.redisUrl.replace(/\/$/, "")}/pipeline`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.redisToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify([
+          ["INCR", key],
+          ["EXPIRE", key, "60"],
+        ]),
+        signal: AbortSignal.timeout(2_000),
+      });
+    } catch {
+      throw new ApiError(503, "RATE_LIMITED", "Rate limiter is unavailable.");
+    }
 
     if (!response.ok) {
       throw new ApiError(503, "RATE_LIMITED", "Rate limiter is unavailable.");

@@ -49,6 +49,7 @@ export type ContextRequestRow = {
   requested_credits: number;
   spent_credits: number;
   idempotency_key: string | null;
+  idempotency_request_hash: string | null;
   webhook_url: string | null;
   metadata: unknown;
   qstash_message_id: string | null;
