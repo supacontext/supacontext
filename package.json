@@ -7,11 +7,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "dev": "node scripts/with-root-env.mjs turbo dev",
+    "build": "node scripts/with-root-env.mjs turbo build",
+    "lint": "node scripts/with-root-env.mjs turbo lint",
+    "typecheck": "node scripts/with-root-env.mjs turbo typecheck",
+    "test": "node scripts/with-root-env.mjs turbo test",
     "format": "prettier --write ."
   },
   "devDependencies": {

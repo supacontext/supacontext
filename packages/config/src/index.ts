@@ -80,7 +80,6 @@ const providerSchema = {
 export const apiEnvSchema = z.object({
   ...sharedSchema,
   ...supabaseSchema,
-  ...creemSchema,
   ...upstashSchema,
   PORT: port.default(3001),
   LOG_LEVEL: logLevel,

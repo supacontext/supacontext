@@ -75,6 +75,16 @@ Examples live in `packages/sdk/examples`.
 
 ## Environment Variables
 
+Local development uses one root env file:
+
+```bash
+cp .env.example .env
+```
+
+The root scripts and app `dev`/`start` scripts load `./.env` from the monorepo root. Do not create separate `.env` files inside `apps/web`, `apps/api`, or `apps/worker`.
+
+In cloud deployment, env vars are configured per deployed service. Railway and Vercel do not automatically share the monorepo root `.env`.
+
 Shared:
 
 - `NODE_ENV`
@@ -132,6 +142,8 @@ Creem billing:
 
 Never expose service-role keys, provider keys, Creem secrets, QStash signing keys, Redis tokens, or `API_KEY_HASH_SECRET` to client code.
 
+`DATABASE_URL` is the Supabase Postgres connection string, not the Supabase API URL. For Supabase Cloud, use the database connection string from the Supabase project and set it on each server-side service that talks to Postgres: web, API, and worker.
+
 ## Database Setup
 
 The Supabase migration is `supabase/migrations/20260703170000_initial_schema.sql`.
@@ -178,7 +190,7 @@ The Creem adapter contains TODO comments around the exact checkout and portal HT
 
 ## Railway Deployment
 
-Create three Railway services from this monorepo.
+Create three Railway services from this monorepo. This is the recommended first deployment path because the web app, API, and worker can share one Railway project while still having separate service-level env vars.
 
 Web service:
 
@@ -212,6 +224,12 @@ Set health checks to:
 - API: `/health`
 - Worker: `/health`
 - Web: `/`
+
+Set env vars separately per Railway service:
+
+- Web: shared web URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Clerk, Supabase anon URL/key, and Creem billing vars.
+- API: shared API URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Supabase anon/service keys, Upstash Redis, and QStash token.
+- Worker: shared worker URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Supabase anon/service keys, QStash signing keys, and provider API keys.
 
 ## Verification
 

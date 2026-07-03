@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "build": "node ../../scripts/with-root-env.mjs next build",
+    "dev": "node ../../scripts/with-root-env.mjs next dev",
     "lint": "eslint . --max-warnings 0",
-    "start": "next start",
+    "start": "node ../../scripts/with-root-env.mjs next start",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
