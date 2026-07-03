@@ -13,12 +13,20 @@ async function main(): Promise<void> {
     }
 
     isClosing = true;
+    const forceExitTimer = setTimeout(() => {
+      server.log.error({ signal }, "Timed out shutting down SupaContext API.");
+      process.exit(1);
+    }, 10_000);
+    forceExitTimer.unref();
+
     server.log.info({ signal }, "Shutting down SupaContext API.");
 
     try {
       await server.close();
+      clearTimeout(forceExitTimer);
       process.exit(0);
     } catch (error) {
+      clearTimeout(forceExitTimer);
       server.log.error(error, "Failed to shut down SupaContext API cleanly.");
       process.exit(1);
     }

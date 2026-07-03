@@ -31,7 +31,6 @@ export class InsufficientCreditsError extends Error {
 type PostgresError = {
   code?: unknown;
   constraint?: unknown;
-  constraint_name?: unknown;
 };
 
 function readPostgresError(error: unknown): PostgresError {
@@ -43,8 +42,7 @@ function isDuplicateIdempotencyError(error: unknown): boolean {
 
   return (
     postgresError.code === "23505" &&
-    (postgresError.constraint === "usage_ledger_workspace_idempotency_key_idx" ||
-      postgresError.constraint_name === "usage_ledger_workspace_idempotency_key_idx")
+    postgresError.constraint === "usage_ledger_workspace_idempotency_key_idx"
   );
 }
 
@@ -53,8 +51,7 @@ function isInsufficientCreditsError(error: unknown): boolean {
 
   return (
     postgresError.code === "23514" &&
-    (postgresError.constraint === "credit_balances_balance_check" ||
-      postgresError.constraint_name === "credit_balances_balance_check")
+    postgresError.constraint === "credit_balances_balance_check"
   );
 }
 
