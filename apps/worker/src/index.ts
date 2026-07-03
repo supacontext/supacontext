@@ -15,6 +15,11 @@ async function main(): Promise<void> {
 const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
 
 if (entrypoint === import.meta.url) {
-  await main();
+  try {
+    await main();
+  } catch (error) {
+    console.error("Failed to start SupaContext worker.", error);
+    process.exit(1);
+  }
 }
 

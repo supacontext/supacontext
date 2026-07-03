@@ -2,16 +2,16 @@ import { z } from "zod";
 
 const nodeEnv = z.enum(["development", "test", "production"]).default("development");
 const requiredString = z.string().trim().min(1, "is required");
-const requiredUrl = z.string().trim().url();
+const requiredUrl = z.string().trim().pipe(z.url());
 const optionalString = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().trim().min(1).optional(),
 );
 const optionalUrl = z.preprocess(
   (value) => (value === "" ? undefined : value),
-  z.string().trim().url().optional(),
+  z.string().trim().pipe(z.url()).optional(),
 );
-const port = z.coerce.number().int().positive();
+const port = z.coerce.number().int().positive().max(65535);
 const logLevel = z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info");
 
 const sharedSchema = {

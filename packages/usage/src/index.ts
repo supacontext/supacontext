@@ -1,4 +1,5 @@
 import {
+  CONTEXT_DEPTHS,
   getDepthCreditCost,
   isDepthAllowedForPlan,
   type ContextDepth,
@@ -25,15 +26,18 @@ export type UsageAuthorizationResult =
       reason: "plan_depth_restricted" | "api_key_depth_restricted" | "monthly_limit" | "credits";
     };
 
-const depthRank: Record<ContextDepth, number> = {
-  fast: 0,
-  standard: 1,
-  thorough: 2,
-  deep: 3,
-};
+const depthRank = Object.fromEntries(
+  CONTEXT_DEPTHS.map((depth, index) => [depth, index]),
+) as Record<ContextDepth, number>;
 
-function getDepthRank(depth: ContextDepth): number {
-  return depthRank[depth] ?? 0;
+export function getDepthRank(depth: ContextDepth): number {
+  const rank = depthRank[depth];
+
+  if (rank === undefined) {
+    throw new Error(`Unknown context depth: ${depth}`);
+  }
+
+  return rank;
 }
 
 export function authorizeUsage(input: UsageAuthorizationInput): UsageAuthorizationResult {

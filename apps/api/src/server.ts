@@ -2,7 +2,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import type { ApiEnv } from "@supacontext/config";
-import { getDepthCreditCost, PLANS } from "@supacontext/core";
+import { DEPTH_CREDIT_COST, PLANS } from "@supacontext/core";
 import { createDatabaseClient } from "@supacontext/db";
 import { ZodError } from "zod";
 import { ContextService } from "./context-service.js";
@@ -89,10 +89,7 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
   server.get("/v1/meta", async () => ({
     product: "SupaContext",
     depths: {
-      fast: getDepthCreditCost("fast"),
-      standard: getDepthCreditCost("standard"),
-      thorough: getDepthCreditCost("thorough"),
-      deep: getDepthCreditCost("deep"),
+      ...DEPTH_CREDIT_COST,
     },
     plans: PLANS,
   }));

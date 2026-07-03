@@ -25,9 +25,12 @@ export interface ProviderClient {
 }
 
 export class ProviderNotImplementedError extends Error {
+  readonly provider: ProviderName;
+
   constructor(provider: ProviderName) {
     super(`${provider} provider is a typed placeholder and has no API calls yet.`);
     this.name = "ProviderNotImplementedError";
+    this.provider = provider;
   }
 }
 

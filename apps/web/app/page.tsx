@@ -15,7 +15,9 @@ export default function HomePage() {
           intentionally not a raw search API or scraper output layer.
         </p>
         <div className="actions">
-          <Button className="primary">Dashboard coming next</Button>
+          <Button className="primary" disabled>
+            Dashboard coming next
+          </Button>
           <span>POST /v1/context is intentionally not implemented in this foundation.</span>
         </div>
       </section>

@@ -11,6 +11,53 @@ export type InsertUsageLedgerInput = {
   metadata?: postgres.JSONValue;
 };
 
+export class DuplicateUsageLedgerEntryError extends Error {
+  constructor(
+    readonly workspaceId: string,
+    readonly idempotencyKey: string,
+  ) {
+    super("Usage ledger entry already exists for this idempotency key.");
+    this.name = "DuplicateUsageLedgerEntryError";
+  }
+}
+
+export class InsufficientCreditsError extends Error {
+  constructor(readonly workspaceId: string) {
+    super("Insufficient credits for usage ledger debit.");
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+type PostgresError = {
+  code?: unknown;
+  constraint?: unknown;
+  constraint_name?: unknown;
+};
+
+function readPostgresError(error: unknown): PostgresError {
+  return typeof error === "object" && error !== null ? (error as PostgresError) : {};
+}
+
+function isDuplicateIdempotencyError(error: unknown): boolean {
+  const postgresError = readPostgresError(error);
+
+  return (
+    postgresError.code === "23505" &&
+    (postgresError.constraint === "usage_ledger_workspace_idempotency_key_idx" ||
+      postgresError.constraint_name === "usage_ledger_workspace_idempotency_key_idx")
+  );
+}
+
+function isInsufficientCreditsError(error: unknown): boolean {
+  const postgresError = readPostgresError(error);
+
+  return (
+    postgresError.code === "23514" &&
+    (postgresError.constraint === "credit_balances_balance_check" ||
+      postgresError.constraint_name === "credit_balances_balance_check")
+  );
+}
+
 export async function getCreditBalance(
   sql: postgres.Sql,
   workspaceId: string,
@@ -29,25 +76,39 @@ export async function insertUsageLedgerEntry(
   sql: postgres.Sql,
   input: InsertUsageLedgerInput,
 ): Promise<UsageLedgerRow> {
-  const rows = await sql<UsageLedgerRow[]>`
-    insert into usage_ledger (
-      workspace_id,
-      event_type,
-      credits,
-      context_request_id,
-      idempotency_key,
-      metadata
-    )
-    values (
-      ${input.workspaceId},
-      ${input.eventType},
-      ${input.credits},
-      ${input.contextRequestId ?? null},
-      ${input.idempotencyKey ?? null},
-      ${sql.json(input.metadata ?? {})}
-    )
-    returning id, workspace_id, event_type, credits, context_request_id, idempotency_key, created_at
-  `;
+  let rows: UsageLedgerRow[];
+
+  try {
+    rows = await sql<UsageLedgerRow[]>`
+      insert into usage_ledger (
+        workspace_id,
+        event_type,
+        credits,
+        context_request_id,
+        idempotency_key,
+        metadata
+      )
+      values (
+        ${input.workspaceId},
+        ${input.eventType},
+        ${input.credits},
+        ${input.contextRequestId ?? null},
+        ${input.idempotencyKey ?? null},
+        ${sql.json(input.metadata ?? {})}
+      )
+      returning id, workspace_id, event_type, credits, context_request_id, idempotency_key, created_at
+    `;
+  } catch (error) {
+    if (input.idempotencyKey && isDuplicateIdempotencyError(error)) {
+      throw new DuplicateUsageLedgerEntryError(input.workspaceId, input.idempotencyKey);
+    }
+
+    if (isInsufficientCreditsError(error)) {
+      throw new InsufficientCreditsError(input.workspaceId);
+    }
+
+    throw error;
+  }
 
   const row = rows[0];
 
