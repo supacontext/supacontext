@@ -5,6 +5,7 @@ import {
   getCreditValueCents,
   getDepthCreditCost,
   isDepthAllowedForPlan,
+  PLAN_RATE_LIMITS,
   PLANS,
 } from "../plans.js";
 
@@ -29,9 +30,21 @@ describe("credit math", () => {
     expect(isDepthAllowedForPlan("starter", "deep")).toBe(true);
   });
 
+  it("keeps public plan limits in shared constants", () => {
+    expect(PLAN_RATE_LIMITS.trial).toEqual({
+      requestsPerMinute: 5,
+      concurrentJobs: 1,
+      deepConcurrentJobs: 0,
+    });
+    expect(PLAN_RATE_LIMITS.scale).toEqual({
+      requestsPerMinute: 300,
+      concurrentJobs: 50,
+      deepConcurrentJobs: 10,
+    });
+  });
+
   it("rejects insufficient balances", () => {
     expect(() => assertSufficientCredits(19, "standard")).toThrow("Insufficient credits");
     expect(() => assertSufficientCredits(20, "standard")).not.toThrow();
   });
 });
-

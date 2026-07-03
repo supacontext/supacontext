@@ -11,6 +11,12 @@ export type PlanConfig = {
   deepAllowed: boolean;
 };
 
+export type PlanRateLimit = {
+  requestsPerMinute: number;
+  concurrentJobs: number;
+  deepConcurrentJobs: number;
+};
+
 export const DEPTH_CREDIT_COST = {
   fast: 5,
   standard: 20,
@@ -63,6 +69,34 @@ export const PLANS = {
   },
 } as const satisfies Record<PlanSlug, PlanConfig>;
 
+export const PLAN_RATE_LIMITS = {
+  trial: {
+    requestsPerMinute: 5,
+    concurrentJobs: 1,
+    deepConcurrentJobs: 0,
+  },
+  starter: {
+    requestsPerMinute: 20,
+    concurrentJobs: 3,
+    deepConcurrentJobs: 1,
+  },
+  builder: {
+    requestsPerMinute: 60,
+    concurrentJobs: 8,
+    deepConcurrentJobs: 2,
+  },
+  pro: {
+    requestsPerMinute: 150,
+    concurrentJobs: 20,
+    deepConcurrentJobs: 5,
+  },
+  scale: {
+    requestsPerMinute: 300,
+    concurrentJobs: 50,
+    deepConcurrentJobs: 10,
+  },
+} as const satisfies Record<PlanSlug, PlanRateLimit>;
+
 export function getDepthCreditCost(depth: ContextDepth): number {
   return DEPTH_CREDIT_COST[depth];
 }
@@ -94,4 +128,3 @@ export function assertSufficientCredits(balance: number, depth: ContextDepth): v
     throw new Error(`Insufficient credits: ${requiredCredits} required, ${balance} available.`);
   }
 }
-

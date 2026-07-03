@@ -1,39 +1,5 @@
-import type { PlanSlug } from "@supacontext/core";
+import { PLAN_RATE_LIMITS, type PlanSlug } from "@supacontext/core";
 import { ApiError } from "./errors.js";
-
-export type PlanRateLimit = {
-  requestsPerMinute: number;
-  concurrentJobs: number;
-  deepConcurrentJobs: number;
-};
-
-export const PLAN_RATE_LIMITS = {
-  trial: {
-    requestsPerMinute: 5,
-    concurrentJobs: 1,
-    deepConcurrentJobs: 0,
-  },
-  starter: {
-    requestsPerMinute: 20,
-    concurrentJobs: 3,
-    deepConcurrentJobs: 1,
-  },
-  builder: {
-    requestsPerMinute: 60,
-    concurrentJobs: 8,
-    deepConcurrentJobs: 2,
-  },
-  pro: {
-    requestsPerMinute: 150,
-    concurrentJobs: 20,
-    deepConcurrentJobs: 5,
-  },
-  scale: {
-    requestsPerMinute: 300,
-    concurrentJobs: 50,
-    deepConcurrentJobs: 10,
-  },
-} as const satisfies Record<PlanSlug, PlanRateLimit>;
 
 export type RateLimitInput = {
   workspaceId: string;

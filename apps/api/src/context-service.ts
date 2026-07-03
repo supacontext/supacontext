@@ -1,9 +1,11 @@
 import {
+  PLAN_RATE_LIMITS,
   PLATFORMS,
   contextRequestInputSchema,
   type ContextDepth,
   type Platform,
   type PlatformMode,
+  type PlanSlug,
   type PublicContextResponse,
 } from "@supacontext/core";
 import { z } from "zod";
@@ -11,7 +13,7 @@ import { authenticateApiKey } from "./auth.js";
 import { ApiError, formatZodError } from "./errors.js";
 import { createPlaceholderResult, toPublicContextResponse } from "./public-response.js";
 import type { QstashClient } from "./qstash.js";
-import { PLAN_RATE_LIMITS, type RateLimiter } from "./rate-limit.js";
+import type { RateLimiter } from "./rate-limit.js";
 import { createContextRequestIdempotencyHash, type ContextStore } from "./store.js";
 
 const idempotencyKeySchema = z.string().trim().min(1).max(255);
@@ -235,7 +237,7 @@ export class ContextService {
     return parsed.data;
   }
 
-  private async enforceRateLimit(workspaceId: string, plan: keyof typeof PLAN_RATE_LIMITS): Promise<void> {
+  private async enforceRateLimit(workspaceId: string, plan: PlanSlug): Promise<void> {
     const result = await this.rateLimiter.check({
       workspaceId,
       plan,
@@ -252,7 +254,7 @@ export class ContextService {
 
   private async enforceConcurrency(input: {
     workspaceId: string;
-    plan: keyof typeof PLAN_RATE_LIMITS;
+    plan: PlanSlug;
     depth: ContextDepth;
     isAsync: boolean;
   }): Promise<void> {
