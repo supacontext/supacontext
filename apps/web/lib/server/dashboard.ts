@@ -201,16 +201,26 @@ function mapApiKey(row: ApiKeySelectRow): DashboardApiKey {
   };
 }
 
-function requestStatusFromError(reason: Exclude<ReturnType<typeof authorizeUsage>, { allowed: true }>["reason"]): DashboardError {
+function requestStatusFromError(
+  reason: Exclude<ReturnType<typeof authorizeUsage>, { allowed: true }>["reason"],
+): DashboardError {
   if (reason === "monthly_limit") {
-    return new DashboardError(402, "MONTHLY_CREDIT_LIMIT_EXCEEDED", "API key monthly credit limit would be exceeded.");
+    return new DashboardError(
+      402,
+      "MONTHLY_CREDIT_LIMIT_EXCEEDED",
+      "API key monthly credit limit would be exceeded.",
+    );
   }
 
   if (reason === "credits") {
     return new DashboardError(402, "INSUFFICIENT_CREDITS", "Insufficient account credits.");
   }
 
-  return new DashboardError(403, "DEPTH_NOT_ALLOWED", "Requested depth is not allowed for this API key or plan.");
+  return new DashboardError(
+    403,
+    "DEPTH_NOT_ALLOWED",
+    "Requested depth is not allowed for this API key or plan.",
+  );
 }
 
 function createContextRequestId(): string {
@@ -231,18 +241,25 @@ async function runWorkerContextJob(requestId: string): Promise<void> {
   const internalToken = process.env.WORKER_INTERNAL_TOKEN;
 
   if (process.env.NODE_ENV === "production" && !internalToken) {
-    throw new DashboardError(500, "WORKER_NOT_CONFIGURED", "WORKER_INTERNAL_TOKEN is required in production.");
+    throw new DashboardError(
+      500,
+      "WORKER_NOT_CONFIGURED",
+      "WORKER_INTERNAL_TOKEN is required in production.",
+    );
   }
 
-  const response = await fetch(`${getWorkerUrl()}/v1/jobs/context/${encodeURIComponent(requestId)}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(internalToken ? { "x-supacontext-worker-token": internalToken } : {}),
+  const response = await fetch(
+    `${getWorkerUrl()}/v1/jobs/context/${encodeURIComponent(requestId)}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(internalToken ? { "x-supacontext-worker-token": internalToken } : {}),
+      },
+      body: JSON.stringify({ requestId }),
+      signal: AbortSignal.timeout(120_000),
     },
-    body: JSON.stringify({ requestId }),
-    signal: AbortSignal.timeout(120_000),
-  });
+  );
   const data = (await response.json().catch(() => ({}))) as {
     status?: string;
     error?: {
@@ -252,17 +269,23 @@ async function runWorkerContextJob(requestId: string): Promise<void> {
   };
 
   if (!response.ok) {
-    throw new DashboardError(502, "WORKER_FAILED", "Context worker failed to process the playground request.");
+    throw new DashboardError(
+      502,
+      "WORKER_FAILED",
+      "Context worker failed to process the playground request.",
+    );
   }
 
   if (data.status === "failed") {
-    throw new DashboardError(502, data.error?.code ?? "WORKER_FAILED", data.error?.message ?? "Context worker failed.");
+    return;
   }
 }
 
 function mapUsageRequest(row: UsageRequestRow): UsageRequest {
   const latencyMs =
-    row.started_at && row.completed_at ? row.completed_at.getTime() - row.started_at.getTime() : null;
+    row.started_at && row.completed_at
+      ? row.completed_at.getTime() - row.started_at.getTime()
+      : null;
   const usage =
     row.response_json && typeof row.response_json === "object" && "usage" in row.response_json
       ? (row.response_json as { usage?: { cached?: boolean; sources_used?: number } }).usage
@@ -515,10 +538,16 @@ export async function listUsageRequests(
 ): Promise<UsageRequest[]> {
   const sql = getDatabase();
   const keyFilter = filters.keyId ? sql`and context_requests.api_key_id = ${filters.keyId}` : sql``;
-  const depthFilter = filters.depth ? sql`and context_requests.depth = ${filters.depth}::context_depth` : sql``;
-  const statusFilter = filters.status ? sql`and context_requests.status = ${filters.status}::request_status` : sql``;
+  const depthFilter = filters.depth
+    ? sql`and context_requests.depth = ${filters.depth}::context_depth`
+    : sql``;
+  const statusFilter = filters.status
+    ? sql`and context_requests.status = ${filters.status}::request_status`
+    : sql``;
   const fromFilter = filters.from ? sql`and context_requests.created_at >= ${filters.from}` : sql``;
-  const toFilter = filters.to ? sql`and context_requests.created_at < (${filters.to}::date + interval '1 day')` : sql``;
+  const toFilter = filters.to
+    ? sql`and context_requests.created_at < (${filters.to}::date + interval '1 day')`
+    : sql``;
   const rows = await sql<UsageRequestRow[]>`
     select
       context_requests.id,
@@ -566,7 +595,11 @@ export async function createDashboardApiKey(
   );
 
   if (!parsed.ok) {
-    throw new DashboardError(400, "INVALID_KEY_FORM", parsed.errors[0]?.message ?? "Invalid API key form.");
+    throw new DashboardError(
+      400,
+      "INVALID_KEY_FORM",
+      parsed.errors[0]?.message ?? "Invalid API key form.",
+    );
   }
 
   const sql = getDatabase();
@@ -678,7 +711,11 @@ export async function runPlaygroundRequest(
     const apiKey = apiKeyRows[0];
 
     if (!apiKey) {
-      throw new DashboardError(400, "API_KEY_REQUIRED", "Create an API key before running the playground.");
+      throw new DashboardError(
+        400,
+        "API_KEY_REQUIRED",
+        "Create an API key before running the playground.",
+      );
     }
 
     const plan = await getPlanState(workspace.workspaceId);
@@ -762,15 +799,105 @@ export async function runPlaygroundRequest(
     return createdRequestId;
   });
 
-  await runWorkerContextJob(requestId);
+  try {
+    await runWorkerContextJob(requestId);
+  } catch (error) {
+    await failPlaygroundRequest(
+      requestId,
+      "WORKER_UNAVAILABLE",
+      error instanceof Error
+        ? error.message
+        : "Context worker failed to process the playground request.",
+    );
+    throw error;
+  }
 
   const result = await getStoredPlaygroundRequest(workspace.workspaceId, requestId);
 
   if (!result) {
-    throw new DashboardError(500, "PLAYGROUND_RESULT_NOT_FOUND", "Worker completed without a stored result.");
+    throw new DashboardError(
+      500,
+      "PLAYGROUND_RESULT_NOT_FOUND",
+      "Worker completed without a stored result.",
+    );
   }
 
   return result;
+}
+
+async function failPlaygroundRequest(
+  requestId: string,
+  errorCode: string,
+  errorMessage: string,
+): Promise<void> {
+  const sql = getDatabase();
+
+  await sql.begin(async (transaction) => {
+    const rows = await transaction<
+      Array<{
+        workspace_id: string;
+        api_key_id: string | null;
+        spent_credits: number;
+      }>
+    >`
+      select workspace_id, api_key_id, spent_credits
+      from context_requests
+      where id = ${requestId}
+      for update
+    `;
+    const request = rows[0];
+
+    if (!request) {
+      return;
+    }
+
+    await transaction`
+      update context_requests
+      set
+        status = 'failed',
+        spent_credits = 0,
+        error_code = ${errorCode},
+        error_message = ${errorMessage},
+        completed_at = now()
+      where id = ${requestId}
+        and status <> 'completed'
+    `;
+
+    if (request.spent_credits <= 0) {
+      return;
+    }
+
+    const refundRows = await transaction<Array<{ id: string }>>`
+      insert into usage_ledger (
+        workspace_id,
+        event_type,
+        credits,
+        context_request_id,
+        idempotency_key,
+        metadata
+      )
+      values (
+        ${request.workspace_id},
+        'refund'::ledger_event_type,
+        ${request.spent_credits},
+        ${requestId},
+        ${`refund:${requestId}`},
+        ${transaction.json({ reason: errorCode })}
+      )
+      on conflict (workspace_id, idempotency_key)
+      where idempotency_key is not null
+      do nothing
+      returning id
+    `;
+
+    if (refundRows[0] && request.api_key_id) {
+      await transaction`
+        update api_keys
+        set month_to_date_credits = greatest(0, month_to_date_credits - ${request.spent_credits})
+        where id = ${request.api_key_id}
+      `;
+    }
+  });
 }
 
 export async function getStoredPlaygroundRequest(
@@ -778,15 +905,17 @@ export async function getStoredPlaygroundRequest(
   requestId: string,
 ): Promise<PublicContextResponse | null> {
   const sql = getDatabase();
-  const rows = await sql<Array<{
-    id: string;
-    query: string;
-    depth: ContextDepth;
-    platforms: Platform[];
-    status: RequestStatus;
-    spent_credits: number;
-    response_json: unknown | null;
-  }>>`
+  const rows = await sql<
+    Array<{
+      id: string;
+      query: string;
+      depth: ContextDepth;
+      platforms: Platform[];
+      status: RequestStatus;
+      spent_credits: number;
+      response_json: unknown | null;
+    }>
+  >`
     select
       context_requests.id,
       context_requests.query,
@@ -807,15 +936,16 @@ export async function getStoredPlaygroundRequest(
     return null;
   }
 
-  const result = row.response_json && typeof row.response_json === "object"
-    ? row.response_json as {
-        answer?: string | null;
-        context_pack?: unknown[];
-        sources?: unknown[];
-        gaps?: unknown[];
-        usage?: PublicContextResponse["usage"];
-      }
-    : {};
+  const result =
+    row.response_json && typeof row.response_json === "object"
+      ? (row.response_json as {
+          answer?: string | null;
+          context_pack?: unknown[];
+          sources?: unknown[];
+          gaps?: unknown[];
+          usage?: PublicContextResponse["usage"];
+        })
+      : {};
 
   return {
     id: row.id,
@@ -837,7 +967,9 @@ export async function getStoredPlaygroundRequest(
   };
 }
 
-export function parseUsageFilters(input: Record<string, string | string[] | undefined>): UsageFilters {
+export function parseUsageFilters(
+  input: Record<string, string | string[] | undefined>,
+): UsageFilters {
   const filters: UsageFilters = {};
   const depth = Array.isArray(input.depth) ? input.depth[0] : input.depth;
   const status = Array.isArray(input.status) ? input.status[0] : input.status;
@@ -868,15 +1000,15 @@ export function parseUsageFilters(input: Record<string, string | string[] | unde
   return filters;
 }
 
-export async function createBillingCheckout(workspaceId: string, plan: PaidPlanSlug): Promise<string> {
+export async function createBillingCheckout(
+  workspaceId: string,
+  plan: PaidPlanSlug,
+): Promise<string> {
   try {
     return await createCreemCheckout(workspaceId, plan);
   } catch (error) {
-    throw new DashboardError(
-      501,
-      "BILLING_NOT_CONFIGURED",
-      error instanceof Error ? error.message : "Creem is not configured for this environment.",
-    );
+    console.error(error);
+    throw new DashboardError(501, "BILLING_NOT_CONFIGURED", "Billing checkout is not available.");
   }
 }
 
@@ -884,10 +1016,11 @@ export async function createBillingPortal(workspaceId: string): Promise<string> 
   try {
     return await createCreemPortal(workspaceId);
   } catch (error) {
+    console.error(error);
     throw new DashboardError(
       501,
       "BILLING_PORTAL_NOT_AVAILABLE",
-      error instanceof Error ? error.message : "Creem customer portal is not available.",
+      "Billing portal is not available.",
     );
   }
 }

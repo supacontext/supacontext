@@ -1,4 +1,10 @@
-import type { ContextDepth, Platform, PlatformMode, ProviderName, RequestStatus } from "@supacontext/core";
+import type {
+  ContextDepth,
+  Platform,
+  PlatformMode,
+  ProviderName,
+  RequestStatus,
+} from "@supacontext/core";
 import type { DatabaseClient } from "@supacontext/db";
 import type { ProviderCallLogInput } from "@supacontext/providers";
 import type postgres from "postgres";
@@ -16,6 +22,11 @@ export type WorkerContextRequest = {
   webhookUrl: string | null;
 };
 
+export type WorkerClaimResult = {
+  request: WorkerContextRequest | null;
+  claimed: boolean;
+};
+
 type ContextRequestRow = {
   id: string;
   workspace_id: string;
@@ -30,9 +41,16 @@ type ContextRequestRow = {
 
 export interface WorkerStore {
   findRequest(requestId: string): Promise<WorkerContextRequest | null>;
-  markRequestRunning(requestId: string): Promise<WorkerContextRequest | null>;
-  completeRequest(requestId: string, result: PublicContextResult): Promise<WorkerContextRequest | null>;
-  failRequest(requestId: string, errorCode: string, errorMessage: string): Promise<WorkerContextRequest | null>;
+  claimRequest(requestId: string): Promise<WorkerClaimResult>;
+  completeRequest(
+    requestId: string,
+    result: PublicContextResult,
+  ): Promise<WorkerContextRequest | null>;
+  failRequest(
+    requestId: string,
+    errorCode: string,
+    errorMessage: string,
+  ): Promise<WorkerContextRequest | null>;
   saveProviderCallLog(input: ProviderCallLogInput): Promise<void>;
   close(): Promise<void>;
 }
@@ -60,14 +78,14 @@ export class PostgresWorkerStore implements WorkerStore {
     return rows[0] ? mapRequest(rows[0]) : null;
   }
 
-  async markRequestRunning(requestId: string): Promise<WorkerContextRequest | null> {
+  async claimRequest(requestId: string): Promise<WorkerClaimResult> {
     const rows = await this.sql<ContextRequestRow[]>`
       update context_requests
       set
         status = 'running',
         started_at = coalesce(started_at, now())
       where id = ${requestId}
-        and status in ('queued', 'running')
+        and status = 'queued'
       returning
         id,
         workspace_id,
@@ -80,7 +98,17 @@ export class PostgresWorkerStore implements WorkerStore {
         webhook_url
     `;
 
-    return rows[0] ? mapRequest(rows[0]) : this.findRequest(requestId);
+    if (rows[0]) {
+      return {
+        request: mapRequest(rows[0]),
+        claimed: true,
+      };
+    }
+
+    return {
+      request: await this.findRequest(requestId),
+      claimed: false,
+    };
   }
 
   async completeRequest(

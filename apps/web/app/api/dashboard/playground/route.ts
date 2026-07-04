@@ -4,15 +4,20 @@ import {
   runPlaygroundRequest,
 } from "../../../../lib/server/dashboard";
 
-function jsonError(error: DashboardError | Error) {
+function jsonError(error: unknown) {
+  if (!(error instanceof DashboardError)) {
+    console.error(error);
+  }
+
   const status = error instanceof DashboardError ? error.statusCode : 500;
   const code = error instanceof DashboardError ? error.code : "INTERNAL_ERROR";
+  const message = error instanceof DashboardError ? error.message : "Internal server error.";
 
   return Response.json(
     {
       error: {
         code,
-        message: error.message,
+        message,
       },
     },
     { status },
@@ -45,6 +50,6 @@ export async function POST(request: Request) {
       sourcesUsed: result.usage.sources_used,
     });
   } catch (error) {
-    return jsonError(error instanceof Error ? error : new Error("Unknown error."));
+    return jsonError(error);
   }
 }

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   CONTEXT_DEPTHS,
+  PLAN_RATE_LIMITS,
   type ContextDepth,
   type Platform,
   type PlatformMode,
@@ -149,7 +150,9 @@ function mapRequestRow(row: ContextRequestSelectRow): StoredContextRequest {
   };
 }
 
-function mapUsageDenial(reason: Exclude<ReturnType<typeof authorizeUsage>, { allowed: true }>["reason"]): ApiError {
+function mapUsageDenial(
+  reason: Exclude<ReturnType<typeof authorizeUsage>, { allowed: true }>["reason"],
+): ApiError {
   if (reason === "monthly_limit") {
     return new ApiError(
       402,
@@ -163,11 +166,21 @@ function mapUsageDenial(reason: Exclude<ReturnType<typeof authorizeUsage>, { all
     return new ApiError(402, "insufficient_credits", "Insufficient account credits.");
   }
 
-  return new ApiError(403, "forbidden_depth", "Requested depth is not allowed for this API key or plan.");
+  return new ApiError(
+    403,
+    "forbidden_depth",
+    "Requested depth is not allowed for this API key or plan.",
+  );
 }
 
 function assertPlanSlug(value: string): PlanSlug {
-  if (value === "trial" || value === "starter" || value === "builder" || value === "pro" || value === "scale") {
+  if (
+    value === "trial" ||
+    value === "starter" ||
+    value === "builder" ||
+    value === "pro" ||
+    value === "scale"
+  ) {
     return value;
   }
 
@@ -237,9 +250,7 @@ export class PostgresContextStore implements ContextStore {
   }
 
   async countActiveJobs(workspaceId: string, depth?: ContextDepth): Promise<number> {
-    const depthFilter = depth
-      ? this.sql`and depth = ${depth}`
-      : this.sql``;
+    const depthFilter = depth ? this.sql`and depth = ${depth}` : this.sql``;
     const rows = await this.sql<Array<{ count: number }>>`
       select count(*)::int as count
       from context_requests
@@ -251,7 +262,9 @@ export class PostgresContextStore implements ContextStore {
     return rows[0]?.count ?? 0;
   }
 
-  async acceptContextRequest(input: AcceptContextRequestInput): Promise<AcceptContextRequestResult> {
+  async acceptContextRequest(
+    input: AcceptContextRequestInput,
+  ): Promise<AcceptContextRequestResult> {
     return this.sql.begin(async (transaction) => {
       const idempotencyRequestHash = createContextRequestIdempotencyHash(input);
 
@@ -271,6 +284,9 @@ export class PostgresContextStore implements ContextStore {
         }
       }
 
+      await this.lockWorkspace(transaction, input.apiKey.workspace_id);
+      await this.enforceConcurrencyInTransaction(transaction, input);
+
       const apiKey = await this.getApiKeyForUpdate(transaction, input.apiKey.id);
       const balance = await this.getBalanceForUpdate(transaction, input.apiKey.workspace_id);
       const authorization = authorizeUsage({
@@ -286,7 +302,11 @@ export class PostgresContextStore implements ContextStore {
         throw mapUsageDenial(authorization.reason);
       }
 
-      const request = await this.insertContextRequest(transaction, input, authorization.requiredCredits);
+      const request = await this.insertContextRequest(
+        transaction,
+        input,
+        authorization.requiredCredits,
+      );
 
       if (!request) {
         if (!input.idempotencyKey) {
@@ -597,6 +617,59 @@ export class PostgresContextStore implements ContextStore {
     }
 
     return row;
+  }
+
+  private async lockWorkspace(
+    transaction: postgres.TransactionSql,
+    workspaceId: string,
+  ): Promise<void> {
+    const rows = await transaction<Array<{ id: string }>>`
+      select id
+      from workspaces
+      where id = ${workspaceId}
+      for update
+    `;
+
+    if (!rows[0]) {
+      throw new Error("Workspace not found.");
+    }
+  }
+
+  private async enforceConcurrencyInTransaction(
+    transaction: postgres.TransactionSql,
+    input: AcceptContextRequestInput,
+  ): Promise<void> {
+    if (!input.async) {
+      return;
+    }
+
+    const limits = PLAN_RATE_LIMITS[input.plan];
+    const activeRows = await transaction<Array<{ count: number }>>`
+      select count(*)::int as count
+      from context_requests
+      where workspace_id = ${input.apiKey.workspace_id}
+        and status in ('queued', 'running')
+    `;
+
+    if ((activeRows[0]?.count ?? 0) >= limits.concurrentJobs) {
+      throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
+    }
+
+    if (input.depth !== "deep") {
+      return;
+    }
+
+    const deepRows = await transaction<Array<{ count: number }>>`
+      select count(*)::int as count
+      from context_requests
+      where workspace_id = ${input.apiKey.workspace_id}
+        and status in ('queued', 'running')
+        and depth = 'deep'
+    `;
+
+    if ((deepRows[0]?.count ?? 0) >= limits.deepConcurrentJobs) {
+      throw new ApiError(429, "rate_limited", "Concurrent deep job limit exceeded.");
+    }
   }
 
   private async getBalanceForUpdate(

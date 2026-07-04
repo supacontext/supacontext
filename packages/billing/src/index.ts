@@ -31,11 +31,18 @@ export type PortalSession = {
 };
 
 export type BillingWebhookEventType =
-  | "subscription.created"
-  | "subscription.updated"
-  | "subscription.cancelled"
-  | "payment.succeeded"
-  | "payment.failed"
+  | "checkout.completed"
+  | "subscription.active"
+  | "subscription.paid"
+  | "subscription.canceled"
+  | "subscription.scheduled_cancel"
+  | "subscription.past_due"
+  | "subscription.expired"
+  | "subscription.update"
+  | "subscription.trialing"
+  | "subscription.paused"
+  | "refund.created"
+  | "dispute.created"
   | "unknown";
 
 export type BillingWebhookEvent = {
@@ -80,9 +87,11 @@ export type CreemBillingClientOptions = {
   webhookSecret: string;
   productIds: CreemProductIds;
   baseUrl?: string;
+  testMode?: boolean;
 };
 
-const defaultBaseUrl = "https://api.creem.io";
+const productionBaseUrl = "https://api.creem.io";
+const testBaseUrl = "https://test-api.creem.io";
 
 function assertConfigured(value: string, name: string): string {
   if (!value || value === "replace_me" || value.startsWith("replace_")) {
@@ -94,7 +103,7 @@ function assertConfigured(value: string, name: string): string {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -119,6 +128,12 @@ function firstString(...values: unknown[]): string | null {
 }
 
 function getEventData(payload: Record<string, unknown>): Record<string, unknown> {
+  const topLevelObject = asRecord(payload.object);
+
+  if (Object.keys(topLevelObject).length > 0) {
+    return topLevelObject;
+  }
+
   const data = asRecord(payload.data);
   const object = asRecord(data.object);
 
@@ -132,43 +147,76 @@ function normalizeEventType(value: string | null): BillingWebhookEventType {
 
   const normalized = value.replace(/_/g, ".").toLowerCase();
 
-  if (normalized.includes("subscription") && normalized.includes("created")) {
-    return "subscription.created";
+  if (normalized === "checkout.completed") {
+    return "checkout.completed";
   }
 
-  if (normalized.includes("subscription") && normalized.includes("updated")) {
-    return "subscription.updated";
+  if (normalized === "subscription.active" || normalized === "subscription.created") {
+    return "subscription.active";
+  }
+
+  if (normalized === "subscription.paid" || normalized === "payment.succeeded") {
+    return "subscription.paid";
   }
 
   if (
-    normalized.includes("subscription") &&
-    (normalized.includes("cancelled") || normalized.includes("canceled") || normalized.includes("deleted"))
+    normalized === "subscription.canceled" ||
+    normalized === "subscription.cancelled" ||
+    normalized === "subscription.deleted"
   ) {
-    return "subscription.cancelled";
+    return "subscription.canceled";
   }
 
-  if (normalized.includes("payment") && (normalized.includes("succeeded") || normalized.includes("paid"))) {
-    return "payment.succeeded";
+  if (
+    normalized === "subscription.scheduled.cancel" ||
+    normalized === "subscription.scheduled_cancel"
+  ) {
+    return "subscription.scheduled_cancel";
   }
 
-  if (normalized.includes("payment") && (normalized.includes("failed") || normalized.includes("past_due"))) {
-    return "payment.failed";
+  if (
+    normalized === "subscription.past.due" ||
+    normalized === "subscription.past_due" ||
+    normalized === "payment.failed"
+  ) {
+    return "subscription.past_due";
+  }
+
+  if (normalized === "subscription.expired") {
+    return "subscription.expired";
+  }
+
+  if (normalized === "subscription.update" || normalized === "subscription.updated") {
+    return "subscription.update";
+  }
+
+  if (normalized === "subscription.trialing") {
+    return "subscription.trialing";
+  }
+
+  if (normalized === "subscription.paused") {
+    return "subscription.paused";
+  }
+
+  if (normalized === "refund.created") {
+    return "refund.created";
+  }
+
+  if (normalized === "dispute.created") {
+    return "dispute.created";
   }
 
   return "unknown";
 }
 
-function planFromValue(
-  value: string | null,
-  productIds: CreemProductIds,
-): PaidPlanSlug | null {
+function planFromValue(value: string | null, productIds: CreemProductIds): PaidPlanSlug | null {
   if (value === "starter" || value === "builder" || value === "pro" || value === "scale") {
     return value;
   }
 
   const match = Object.entries(productIds).find(([, productId]) => productId === value)?.[0];
 
-  return match ? match as PaidPlanSlug : null;
+  return match ? (match as PaidPlanSlug) : null;
 }
 
 function metadataFrom(data: Record<string, unknown>): Record<string, unknown> {
@@ -176,7 +224,12 @@ function metadataFrom(data: Record<string, unknown>): Record<string, unknown> {
     ...asRecord(data.metadata),
     ...asRecord(asRecord(data.subscription).metadata),
     ...asRecord(asRecord(data.checkout).metadata),
+    ...asRecord(asRecord(data.order).metadata),
   };
+}
+
+function recordId(value: unknown): string | null {
+  return firstString(value, asRecord(value).id);
 }
 
 function normalizeCreemEvent(
@@ -186,28 +239,55 @@ function normalizeCreemEvent(
   const payload = asRecord(rawPayload);
   const data = getEventData(payload);
   const metadata = metadataFrom(data);
-  const rawEventType = firstString(payload.type, payload.event_type, payload.eventType) ?? "unknown";
+  const rawEventType =
+    firstString(payload.type, payload.event_type, payload.eventType) ?? "unknown";
   const eventType = normalizeEventType(rawEventType);
   const subscription = asRecord(data.subscription);
-  const customer = asRecord(data.customer);
-  const product = asRecord(data.product);
+  const order = asRecord(data.order);
   const workspaceId = firstString(metadata.workspace_id, metadata.workspaceId, data.workspace_id);
-  const productId = firstString(data.product_id, product.id, metadata.product_id);
-  const plan = planFromValue(firstString(metadata.plan, metadata.plan_slug, data.plan_slug) ?? productId, productIds);
+  const productId = firstString(
+    data.product_id,
+    data.productId,
+    recordId(data.product),
+    recordId(subscription.product),
+    recordId(order.product),
+    metadata.product_id,
+  );
+  const plan = planFromValue(
+    firstString(metadata.plan, metadata.plan_slug, data.plan_slug) ?? productId,
+    productIds,
+  );
   const subscriptionId = firstString(
     data.subscription_id,
     data.subscriptionId,
-    subscription.id,
+    recordId(data.subscription),
     eventType.startsWith("subscription.") ? data.id : null,
   );
   const paymentId = firstString(
     data.payment_id,
     data.paymentId,
+    data.transaction_id,
+    data.transactionId,
     data.invoice_id,
-    eventType.startsWith("payment.") ? data.id : null,
+    data.last_transaction_id,
+    data.lastTransactionId,
+    recordId(data.order),
+    eventType === "subscription.paid" ? data.id : null,
   );
-  const customerId = firstString(data.customer_id, data.customerId, customer.id);
-  const externalId = firstString(payload.id, payload.event_id, data.event_id, paymentId, subscriptionId);
+  const customerId = firstString(
+    data.customer_id,
+    data.customerId,
+    recordId(data.customer),
+    recordId(subscription.customer),
+    recordId(order.customer),
+  );
+  const externalId = firstString(
+    payload.id,
+    payload.event_id,
+    data.event_id,
+    paymentId,
+    subscriptionId,
+  );
 
   if (!externalId) {
     throw new BillingConfigurationError("Creem webhook event did not include a stable id.");
@@ -224,18 +304,31 @@ function normalizeCreemEvent(
     customerId,
     subscriptionId,
     paymentId,
-    status: firstString(data.status, subscription.status),
+    status: firstString(data.status, subscription.status, order.status),
     currentPeriodStart: firstString(
       data.current_period_start,
       data.currentPeriodStart,
+      data.current_period_start_date,
+      data.currentPeriodStartDate,
       subscription.current_period_start,
+      subscription.current_period_start_date,
     ),
     currentPeriodEnd: firstString(
       data.current_period_end,
       data.currentPeriodEnd,
+      data.current_period_end_date,
+      data.currentPeriodEndDate,
       subscription.current_period_end,
+      subscription.current_period_end_date,
     ),
-    cancelAtPeriodEnd: booleanValue(data.cancel_at_period_end ?? subscription.cancel_at_period_end),
+    cancelAtPeriodEnd:
+      eventType === "subscription.scheduled_cancel" ||
+      booleanValue(
+        data.cancel_at_period_end ??
+          data.cancelAtPeriodEnd ??
+          subscription.cancel_at_period_end ??
+          subscription.cancelAtPeriodEnd,
+      ),
   };
 }
 
@@ -270,7 +363,9 @@ export function verifyCreemSignature(input: {
   const expected = createHmac("sha256", input.webhookSecret).update(input.payload).digest("hex");
 
   return signatureCandidates(input.signature).some((candidate) => {
-    const normalized = candidate.startsWith("sha256=") ? candidate.slice("sha256=".length) : candidate;
+    const normalized = candidate.startsWith("sha256=")
+      ? candidate.slice("sha256=".length)
+      : candidate;
 
     return safeEqualHex(normalized, expected);
   });
@@ -286,7 +381,9 @@ export class CreemBillingClient implements BillingClient {
     this.apiKey = assertConfigured(options.apiKey, "CREEM_API_KEY");
     this.webhookSecret = assertConfigured(options.webhookSecret, "CREEM_WEBHOOK_SECRET");
     this.productIds = options.productIds;
-    this.baseUrl = (options.baseUrl ?? defaultBaseUrl).replace(/\/$/, "");
+    this.baseUrl = (
+      options.baseUrl ?? (options.testMode ? testBaseUrl : productionBaseUrl)
+    ).replace(/\/$/, "");
   }
 
   async createCheckoutSession(input: CheckoutSessionInput): Promise<CheckoutSession> {
@@ -296,15 +393,15 @@ export class CreemBillingClient implements BillingClient {
       throw new BillingConfigurationError(`Creem product id is not configured for ${input.plan}.`);
     }
 
-    // TODO(creem): Verify Creem's exact checkout endpoint and payload field names before production traffic.
     const response = await fetch(`${this.baseUrl}/v1/checkouts`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({
         product_id: productId,
+        request_id: input.workspaceId,
         success_url: input.successUrl,
         cancel_url: input.cancelUrl,
-        customer_id: input.customerId ?? undefined,
+        customer: input.customerId ? { id: input.customerId } : undefined,
         metadata: {
           workspace_id: input.workspaceId,
           plan: input.plan,
@@ -317,17 +414,17 @@ export class CreemBillingClient implements BillingClient {
   }
 
   async createPortalSession(input: PortalSessionInput): Promise<PortalSession> {
-    // TODO(creem): Verify Creem's exact customer portal endpoint and payload field names before production traffic.
-    const response = await fetch(`${this.baseUrl}/v1/customers/${encodeURIComponent(input.customerId)}/portal`, {
+    const response = await fetch(`${this.baseUrl}/v1/customers/billing`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({
+        customer_id: input.customerId,
         return_url: input.returnUrl,
       }),
       signal: AbortSignal.timeout(10_000),
     });
 
-    return mapSessionResponse(response, "portal");
+    return mapSessionResponse(response, "portal", input.customerId);
   }
 
   async parseWebhook(payload: string, signature: string): Promise<BillingWebhookEvent> {
@@ -340,7 +437,7 @@ export class CreemBillingClient implements BillingClient {
 
   private headers(): Record<string, string> {
     return {
-      authorization: `Bearer ${this.apiKey}`,
+      "x-api-key": this.apiKey,
       "content-type": "application/json",
     };
   }
@@ -349,6 +446,7 @@ export class CreemBillingClient implements BillingClient {
 async function mapSessionResponse(
   response: Response,
   kind: "checkout" | "portal",
+  externalIdFallback?: string,
 ): Promise<CheckoutSession | PortalSession> {
   const payload = asRecord(await response.json().catch(() => ({})));
 
@@ -356,8 +454,13 @@ async function mapSessionResponse(
     throw new Error(`Creem ${kind} request failed with status ${response.status}.`);
   }
 
-  const url = firstString(payload.url, payload.checkout_url, payload.portal_url);
-  const externalId = firstString(payload.id, payload.session_id);
+  const url = firstString(
+    payload.url,
+    payload.checkout_url,
+    payload.portal_url,
+    payload.customer_portal_link,
+  );
+  const externalId = firstString(payload.id, payload.session_id, externalIdFallback);
 
   if (!url || !externalId) {
     throw new Error(`Creem ${kind} response did not include url and id.`);

@@ -211,7 +211,9 @@ const defaultBaseUrls = {
 const placeholderKeys = new Set(["", "replace_me", "replace-with-at-least-32-random-characters"]);
 
 function isMissingKey(key: string | undefined): boolean {
-  return !key || placeholderKeys.has(key) || key.startsWith("replace_") || key.startsWith("replace-me");
+  return (
+    !key || placeholderKeys.has(key) || key.startsWith("replace_") || key.startsWith("replace-me")
+  );
 }
 
 function resolveEnv(input: Partial<ProviderClientEnv> | undefined): ProviderClientEnv {
@@ -235,7 +237,7 @@ function assertRealKey(provider: ProviderName, key: string | undefined): string 
 }
 
 function asRecord(value: unknown): JsonRecord {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
 
 function asArray(value: unknown): unknown[] {
@@ -261,6 +263,27 @@ function cleanProviderText(value: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function normalizeProviderPublishedAt(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const numericTimestamp = /^\d+(\.\d+)?$/.test(trimmed) ? Number(trimmed) : null;
+  const timestamp =
+    numericTimestamp === null
+      ? Date.parse(trimmed)
+      : numericTimestamp < 1_000_000_000_000
+        ? numericTimestamp * 1000
+        : numericTimestamp;
+
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  return new Date(timestamp).toISOString();
 }
 
 function summarize(value: string): string {
@@ -322,7 +345,7 @@ function buildCandidate(input: {
     platform: input.platform,
     title: title || titleFromUrl(input.url),
     url: input.url,
-    publishedAt: input.publishedAt,
+    publishedAt: normalizeProviderPublishedAt(input.publishedAt),
     content: content || summary,
     summary,
     ...(input.author ? { author: input.author } : {}),
@@ -363,7 +386,7 @@ abstract class LoggedProvider {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const result = await task();
-        await this.logger?.({
+        await this.log({
           contextRequestId: input.requestId,
           provider: this.provider,
           platform: input.platform,
@@ -387,8 +410,10 @@ abstract class LoggedProvider {
       }
     }
 
-    const normalized = lastError ?? new NormalizedProviderError(this.provider, "PROVIDER_ERROR", "Provider request failed.");
-    await this.logger?.({
+    const normalized =
+      lastError ??
+      new NormalizedProviderError(this.provider, "PROVIDER_ERROR", "Provider request failed.");
+    await this.log({
       contextRequestId: input.requestId,
       provider: this.provider,
       platform: input.platform,
@@ -399,6 +424,14 @@ abstract class LoggedProvider {
     });
 
     throw normalized;
+  }
+
+  private async log(input: ProviderCallLogInput): Promise<void> {
+    try {
+      await this.logger?.(input);
+    } catch {
+      // Provider call logging is operational metadata and must not fail customer retrieval.
+    }
   }
 }
 
@@ -443,9 +476,10 @@ class HttpExaClient extends LoggedProvider implements ExaClient {
   }
 
   async search(input: WebSearchInput): Promise<NormalizedSourceCandidate[]> {
-    const query = input.platform === "youtube"
-      ? `${input.query} site:youtube.com/watch OR site:youtu.be`
-      : input.query;
+    const query =
+      input.platform === "youtube"
+        ? `${input.query} site:youtube.com/watch OR site:youtu.be`
+        : input.query;
 
     return this.call(
       {
@@ -525,7 +559,10 @@ class HttpExaClient extends LoggedProvider implements ExaClient {
   }
 }
 
-function mapExaResult(item: JsonRecord, platform: "web" | "youtube"): NormalizedSourceCandidate | null {
+function mapExaResult(
+  item: JsonRecord,
+  platform: "web" | "youtube",
+): NormalizedSourceCandidate | null {
   const url = stringValue(item.url);
   const publishedAt =
     stringValue(item.publishedDate) ??
@@ -534,7 +571,10 @@ function mapExaResult(item: JsonRecord, platform: "web" | "youtube"): Normalized
   const content =
     stringValue(item.text) ??
     stringValue(item.content) ??
-    asArray(item.highlights).map((highlight) => stringValue(highlight)).filter(Boolean).join("\n");
+    asArray(item.highlights)
+      .map((highlight) => stringValue(highlight))
+      .filter(Boolean)
+      .join("\n");
   const summary = stringValue(item.summary) ?? stringValue(item.snippet);
 
   const videoId = platform === "youtube" && url ? youtubeVideoId(url) : undefined;
@@ -641,7 +681,10 @@ function mapRedditResult(item: JsonRecord): NormalizedSourceCandidate | null {
     stringValue(item.body),
     stringValue(item.text),
     stringValue(item.top_comments),
-    asArray(item.comments).map((comment) => stringValue(asRecord(comment).body)).filter(Boolean).join("\n"),
+    asArray(item.comments)
+      .map((comment) => stringValue(asRecord(comment).body))
+      .filter(Boolean)
+      .join("\n"),
   ]
     .filter(Boolean)
     .join("\n");
@@ -651,7 +694,10 @@ function mapRedditResult(item: JsonRecord): NormalizedSourceCandidate | null {
     platform: "reddit",
     title,
     url,
-    publishedAt: stringValue(item.created_utc) ?? stringValue(item.published_at) ?? stringValue(item.createdAt),
+    publishedAt:
+      stringValue(item.created_utc) ??
+      stringValue(item.published_at) ??
+      stringValue(item.createdAt),
     content: body,
     summary: stringValue(item.summary) ?? stringValue(item.snippet),
     author: stringValue(item.author),
@@ -743,7 +789,10 @@ class HttpXquikClient extends LoggedProvider implements XquikClient {
 function mapXResult(item: JsonRecord): NormalizedSourceCandidate | null {
   const url = stringValue(item.url) ?? stringValue(item.link);
   const text = stringValue(item.text) ?? stringValue(item.full_text) ?? stringValue(item.body);
-  const author = stringValue(item.author) ?? stringValue(item.username) ?? stringValue(asRecord(item.user).username);
+  const author =
+    stringValue(item.author) ??
+    stringValue(item.username) ??
+    stringValue(asRecord(item.user).username);
   const title = stringValue(item.title) ?? (author ? `Post by ${author}` : "X post");
 
   return buildCandidate({
@@ -806,7 +855,11 @@ class HttpSupadataClient extends LoggedProvider implements SupadataClient {
         });
 
         if (!candidate) {
-          throw new NormalizedProviderError("supadata", "TRANSCRIPT_EMPTY", "Transcript was empty.");
+          throw new NormalizedProviderError(
+            "supadata",
+            "TRANSCRIPT_EMPTY",
+            "Transcript was empty.",
+          );
         }
 
         return {
@@ -969,18 +1022,30 @@ class HttpDeepSeekClient extends LoggedProvider implements DeepSeekClient {
         const content = stringValue(message.content);
 
         if (!content) {
-          throw new NormalizedProviderError("deepseek", "EMPTY_MODEL_OUTPUT", "DeepSeek returned empty output.");
+          throw new NormalizedProviderError(
+            "deepseek",
+            "EMPTY_MODEL_OUTPUT",
+            "DeepSeek returned empty output.",
+          );
         }
 
         return {
           value: {
             content,
-            ...(numberValue(usage.prompt_tokens) === null ? {} : { inputTokens: numberValue(usage.prompt_tokens) as number }),
-            ...(numberValue(usage.completion_tokens) === null ? {} : { outputTokens: numberValue(usage.completion_tokens) as number }),
+            ...(numberValue(usage.prompt_tokens) === null
+              ? {}
+              : { inputTokens: numberValue(usage.prompt_tokens) as number }),
+            ...(numberValue(usage.completion_tokens) === null
+              ? {}
+              : { outputTokens: numberValue(usage.completion_tokens) as number }),
           },
           statusCode: response.status,
-          ...(numberValue(usage.prompt_tokens) === null ? {} : { inputTokens: numberValue(usage.prompt_tokens) as number }),
-          ...(numberValue(usage.completion_tokens) === null ? {} : { outputTokens: numberValue(usage.completion_tokens) as number }),
+          ...(numberValue(usage.prompt_tokens) === null
+            ? {}
+            : { inputTokens: numberValue(usage.prompt_tokens) as number }),
+          ...(numberValue(usage.completion_tokens) === null
+            ? {}
+            : { outputTokens: numberValue(usage.completion_tokens) as number }),
         };
       },
     );
@@ -1001,9 +1066,10 @@ class MockExaClient extends LoggedProvider implements ExaClient {
       async () => ({
         value: Array.from({ length: input.limit }, (_, index) => {
           const number = index + 1;
-          const url = input.platform === "youtube"
-            ? `https://www.youtube.com/watch?v=mock${number}`
-            : `https://example.com/${encodeURIComponent(input.query)}/${number}`;
+          const url =
+            input.platform === "youtube"
+              ? `https://www.youtube.com/watch?v=mock${number}`
+              : `https://example.com/${encodeURIComponent(input.query)}/${number}`;
 
           return {
             provider: "exa" as const,
@@ -1182,12 +1248,10 @@ class MockVoyageClient extends LoggedProvider implements VoyageClient {
         platform: null,
       },
       async () => ({
-        value: input.chunks
-          .slice(0, input.topK)
-          .map((chunk, index) => ({
-            id: chunk.id,
-            score: 1 - index / 100,
-          })),
+        value: input.chunks.slice(0, input.topK).map((chunk, index) => ({
+          id: chunk.id,
+          score: 1 - index / 100,
+        })),
         statusCode: 200,
       }),
     );
@@ -1285,7 +1349,10 @@ export function createProviderClients(options: CreateProviderClientOptions = {})
 
   return {
     exa: new HttpExaClient(assertRealKey("exa", env.exaApiKey), options.logger),
-    fetchlayer: new HttpFetchLayerClient(assertRealKey("fetchlayer", env.fetchLayerApiKey), options.logger),
+    fetchlayer: new HttpFetchLayerClient(
+      assertRealKey("fetchlayer", env.fetchLayerApiKey),
+      options.logger,
+    ),
     xquik: new HttpXquikClient(assertRealKey("xquik", env.xquikApiKey), options.logger),
     supadata: new HttpSupadataClient(assertRealKey("supadata", env.supadataApiKey), options.logger),
     voyage: new HttpVoyageClient(assertRealKey("voyage", env.voyageApiKey), options.logger),

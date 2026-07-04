@@ -48,6 +48,7 @@ function getCreemClient(): CreemBillingClient {
     apiKey: process.env.CREEM_API_KEY ?? "",
     webhookSecret: process.env.CREEM_WEBHOOK_SECRET ?? "",
     productIds: readCreemProductIds(process.env),
+    testMode: process.env.NODE_ENV !== "production",
   });
 }
 
@@ -62,8 +63,16 @@ function toDate(value: string | null): Date | null {
 }
 
 function normalizeStatus(event: BillingWebhookEvent): SubscriptionStatus {
-  if (event.eventType === "subscription.cancelled") {
+  if (event.eventType === "subscription.canceled") {
     return "cancelled";
+  }
+
+  if (event.eventType === "subscription.expired") {
+    return "expired";
+  }
+
+  if (event.eventType === "subscription.scheduled_cancel") {
+    return "active";
   }
 
   const status = event.status?.toLowerCase().replace(/-/g, "_") ?? "";
@@ -154,7 +163,9 @@ async function upsertSubscription(
   const plan = await findPlan(transaction, event);
 
   if (!workspaceId || !plan || !event.subscriptionId) {
-    throw new BillingConfigurationError("Creem subscription event is missing workspace, plan, or subscription id.");
+    throw new BillingConfigurationError(
+      "Creem subscription event is missing workspace, plan, or subscription id.",
+    );
   }
 
   await transaction`
@@ -187,25 +198,6 @@ async function upsertSubscription(
       current_period_start = coalesce(excluded.current_period_start, subscriptions.current_period_start),
       current_period_end = coalesce(excluded.current_period_end, subscriptions.current_period_end),
       cancel_at_period_end = excluded.cancel_at_period_end
-  `;
-}
-
-async function markPaymentFailed(
-  transaction: postgres.TransactionSql,
-  event: BillingWebhookEvent,
-): Promise<void> {
-  if (!event.subscriptionId && !event.customerId) {
-    return;
-  }
-
-  const subscriptionFilter = event.subscriptionId
-    ? transaction`creem_subscription_id = ${event.subscriptionId}`
-    : transaction`creem_customer_id = ${event.customerId}`;
-
-  await transaction`
-    update subscriptions
-    set status = 'past_due'::subscription_status
-    where ${subscriptionFilter}
   `;
 }
 
@@ -263,28 +255,27 @@ async function applyCreemEvent(
   event: BillingWebhookEvent,
 ): Promise<void> {
   if (
-    event.eventType === "subscription.created" ||
-    event.eventType === "subscription.updated" ||
-    event.eventType === "subscription.cancelled"
+    event.eventType === "checkout.completed" ||
+    event.eventType === "subscription.active" ||
+    event.eventType === "subscription.update" ||
+    event.eventType === "subscription.trialing" ||
+    event.eventType === "subscription.scheduled_cancel" ||
+    event.eventType === "subscription.canceled" ||
+    event.eventType === "subscription.expired" ||
+    event.eventType === "subscription.paused" ||
+    event.eventType === "subscription.past_due"
   ) {
     await upsertSubscription(transaction, event);
     return;
   }
 
-  if (event.eventType === "payment.succeeded") {
+  if (event.eventType === "subscription.paid") {
     if (event.subscriptionId) {
-      await upsertSubscription(transaction, {
-        ...event,
-        eventType: "subscription.updated",
-      });
+      await upsertSubscription(transaction, event);
     }
 
     await grantMonthlyCredits(transaction, event);
     return;
-  }
-
-  if (event.eventType === "payment.failed") {
-    await markPaymentFailed(transaction, event);
   }
 }
 

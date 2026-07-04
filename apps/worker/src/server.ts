@@ -14,6 +14,12 @@ import { verifyInternalToken, verifyQstashSignature } from "./qstash-signature.j
 import { PostgresWorkerStore, type WorkerContextRequest, type WorkerStore } from "./store.js";
 import { HttpWebhookSender, type WebhookPayload, type WebhookSender } from "./webhook.js";
 
+declare module "fastify" {
+  interface FastifyRequest {
+    rawBody?: string;
+  }
+}
+
 export type WorkerServerDependencies = {
   store?: WorkerStore;
   providers?: ProviderClients;
@@ -42,9 +48,16 @@ export type ContextJobResponse =
 
 const contextJobSchema = z
   .object({
-    requestId: z.string().trim().regex(/^ctx_[A-Za-z0-9_-]+$/),
+    requestId: z
+      .string()
+      .trim()
+      .regex(/^ctx_[A-Za-z0-9_-]+$/),
   })
   .passthrough();
+
+function expectedQstashUrl(workerUrl: string, requestUrl: string): string {
+  return new URL(requestUrl, `${workerUrl.replace(/\/$/, "")}/`).toString();
+}
 
 export function buildServer(
   env: WorkerEnv,
@@ -80,6 +93,19 @@ export function buildServer(
     },
   });
 
+  server.removeContentTypeParser("application/json");
+  server.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
+    const rawBody = typeof body === "string" ? body : body.toString("utf8");
+
+    request.rawBody = rawBody;
+
+    try {
+      done(null, rawBody ? (JSON.parse(rawBody) as unknown) : {});
+    } catch (error) {
+      done(error instanceof Error ? error : new Error("Invalid JSON payload."));
+    }
+  });
+
   if (env.NODE_ENV === "production") {
     server.addHook("preHandler", async (request, reply) => {
       if (!request.url.startsWith("/v1/jobs/context")) {
@@ -98,6 +124,8 @@ export function buildServer(
         signature,
         currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY,
         nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY,
+        body: request.rawBody,
+        url: expectedQstashUrl(env.WORKER_URL, request.url),
       });
 
       if (!validInternalToken && !validQstashSignature) {
@@ -168,7 +196,8 @@ export class ContextJobProcessor {
   ) {}
 
   async process(requestId: string): Promise<ContextJobResponse> {
-    const request = await this.store.markRequestRunning(requestId);
+    const claim = await this.store.claimRequest(requestId);
+    const request = claim.request;
 
     if (!request) {
       return {
@@ -178,6 +207,14 @@ export class ContextJobProcessor {
           code: "job_not_found",
           message: "Context request not found.",
         },
+      };
+    }
+
+    if (!claim.claimed && request.status === "running") {
+      return {
+        id: request.id,
+        status: "skipped",
+        reason: "Context request is already running.",
       };
     }
 
@@ -241,7 +278,9 @@ export class ContextJobProcessor {
   }
 }
 
-function requestToPipelineInput(request: WorkerContextRequest): Parameters<ResearchPipeline["run"]>[0] {
+function requestToPipelineInput(
+  request: WorkerContextRequest,
+): Parameters<ResearchPipeline["run"]>[0] {
   return {
     id: request.id,
     workspaceId: request.workspaceId,

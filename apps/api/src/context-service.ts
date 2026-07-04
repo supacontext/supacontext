@@ -1,13 +1,11 @@
 import {
-  PLAN_RATE_LIMITS,
   PLATFORMS,
-  contextRequestInputSchema,
-  type ContextDepth,
   type Platform,
   type PlatformMode,
   type PlanSlug,
   type PublicContextResponse,
 } from "@supacontext/core";
+import { contextRequestInputSchema } from "@supacontext/core/validation";
 import { z } from "zod";
 import { authenticateApiKey } from "./auth.js";
 import { ApiError, formatZodError } from "./errors.js";
@@ -15,10 +13,17 @@ import { toPublicContextResponse } from "./public-response.js";
 import type { QstashClient } from "./qstash.js";
 import type { RateLimiter } from "./rate-limit.js";
 import { createContextRequestIdempotencyHash, type ContextStore } from "./store.js";
-import { mapWorkerFailureToApiError, type ContextJobRunner } from "./worker-runner.js";
+import {
+  mapWorkerFailureToApiError,
+  type ContextJobRunner,
+  type ContextJobRunResult,
+} from "./worker-runner.js";
 
 const idempotencyKeySchema = z.string().trim().min(1).max(255);
-const contextIdSchema = z.string().trim().regex(/^ctx_[A-Za-z0-9_-]+$/);
+const contextIdSchema = z
+  .string()
+  .trim()
+  .regex(/^ctx_[A-Za-z0-9_-]+$/);
 
 export type CreateContextRequestResult =
   | {
@@ -53,7 +58,7 @@ export class ContextService {
       hashSecret: this.apiKeyHashSecret,
       store: this.store,
     });
-    const parsed = contextRequestInputSchema.safeParse(input.body);
+    const parsed = await contextRequestInputSchema.safeParseAsync(input.body);
 
     if (!parsed.success) {
       throw formatZodError(parsed.error);
@@ -99,13 +104,6 @@ export class ContextService {
 
     const plan = await this.store.getWorkspacePlan(apiKey.workspace_id);
     await this.enforceRateLimit(apiKey.workspace_id, plan);
-    await this.enforceConcurrency({
-      workspaceId: apiKey.workspace_id,
-      plan,
-      depth: parsed.data.depth,
-      isAsync: parsed.data.async,
-    });
-
     const accepted = await this.store.acceptContextRequest({
       apiKey,
       plan,
@@ -169,7 +167,19 @@ export class ContextService {
     }
 
     await this.store.markRequestRunning(accepted.request.id);
-    const job = await this.workerRunner.runContextJob(accepted.request.id);
+    let job: ContextJobRunResult;
+
+    try {
+      job = await this.workerRunner.runContextJob(accepted.request.id);
+    } catch (error) {
+      await this.store.failContextRequest(
+        accepted.request.id,
+        "internal_error",
+        error instanceof Error ? error.message : "Context worker failed to process the request.",
+        { refundCredits: true },
+      );
+      throw error;
+    }
 
     if (job.status === "failed") {
       throw mapWorkerFailureToApiError(job.error);
@@ -254,32 +264,6 @@ export class ContextService {
         remaining: result.remaining,
         reset_at: result.resetAt.toISOString(),
       });
-    }
-  }
-
-  private async enforceConcurrency(input: {
-    workspaceId: string;
-    plan: PlanSlug;
-    depth: ContextDepth;
-    isAsync: boolean;
-  }): Promise<void> {
-    if (!input.isAsync) {
-      return;
-    }
-
-    const limits = PLAN_RATE_LIMITS[input.plan];
-    const activeJobs = await this.store.countActiveJobs(input.workspaceId);
-
-    if (activeJobs >= limits.concurrentJobs) {
-      throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
-    }
-
-    if (input.depth === "deep") {
-      const activeDeepJobs = await this.store.countActiveJobs(input.workspaceId, "deep");
-
-      if (activeDeepJobs >= limits.deepConcurrentJobs) {
-        throw new ApiError(429, "rate_limited", "Concurrent deep job limit exceeded.");
-      }
     }
   }
 }

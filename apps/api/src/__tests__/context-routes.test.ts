@@ -3,6 +3,7 @@ import type { ApiEnv } from "@supacontext/config";
 import {
   getDepthCreditCost,
   hashApiKey,
+  PLAN_RATE_LIMITS,
   type ContextDepth,
   type PlanSlug,
   type RequestStatus,
@@ -10,7 +11,11 @@ import {
 import type { ApiKeyRow } from "@supacontext/db";
 import { authorizeUsage } from "@supacontext/usage";
 import { ApiError } from "../errors.js";
-import { toPublicContextResponse, type StoredContextRequest, type StoredContextResultPayload } from "../public-response.js";
+import {
+  toPublicContextResponse,
+  type StoredContextRequest,
+  type StoredContextResultPayload,
+} from "../public-response.js";
 import type { EnqueueContextJobInput, EnqueueContextJobResult, QstashClient } from "../qstash.js";
 import type { RateLimitInput, RateLimitResult, RateLimiter } from "../rate-limit.js";
 import { buildServer } from "../server.js";
@@ -86,6 +91,7 @@ class InMemoryContextStore implements ContextStore {
   private readonly apiKeysById = new Map<string, ApiKeyRow>();
   private readonly requests = new Map<string, InternalRequest>();
   private readonly plans = new Map<string, PlanSlug>();
+  private acceptLock: Promise<void> = Promise.resolve();
   private nextRequestNumber = 1;
 
   constructor(
@@ -183,83 +189,114 @@ class InMemoryContextStore implements ContextStore {
     ).length;
   }
 
-  async acceptContextRequest(input: AcceptContextRequestInput): Promise<AcceptContextRequestResult> {
-    if (input.idempotencyKey) {
-      const existing = await this.findRequestByIdempotencyKey(
-        input.apiKey.workspace_id,
-        input.idempotencyKey,
-        createContextRequestIdempotencyHash(input),
-      );
+  async acceptContextRequest(
+    input: AcceptContextRequestInput,
+  ): Promise<AcceptContextRequestResult> {
+    const previousAccept = this.acceptLock;
+    let releaseAccept: () => void = () => {};
 
-      if (existing) {
-        return {
-          request: existing,
-          created: false,
-        };
-      }
-    }
-
-    const apiKey = this.apiKey;
-    const authorization = authorizeUsage({
-      plan: input.plan,
-      depth: input.depth,
-      balance: this.balance,
-      apiKeyMaxDepth: apiKey.max_depth,
-      monthlyCreditLimit: apiKey.monthly_credit_limit,
-      monthToDateCredits: apiKey.month_to_date_credits,
+    this.acceptLock = new Promise((resolve) => {
+      releaseAccept = resolve;
     });
+    await previousAccept;
 
-    if (!authorization.allowed) {
-      if (authorization.reason === "credits") {
-        throw new ApiError(402, "insufficient_credits", "Insufficient account credits.");
+    try {
+      if (input.idempotencyKey) {
+        const existing = await this.findRequestByIdempotencyKey(
+          input.apiKey.workspace_id,
+          input.idempotencyKey,
+          createContextRequestIdempotencyHash(input),
+        );
+
+        if (existing) {
+          return {
+            request: existing,
+            created: false,
+          };
+        }
       }
 
-      if (authorization.reason === "monthly_limit") {
+      if (input.async) {
+        const limits = PLAN_RATE_LIMITS[input.plan];
+        const activeJobs = await this.countActiveJobs(input.apiKey.workspace_id);
+
+        if (activeJobs >= limits.concurrentJobs) {
+          throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
+        }
+
+        if (input.depth === "deep") {
+          const activeDeepJobs = await this.countActiveJobs(input.apiKey.workspace_id, "deep");
+
+          if (activeDeepJobs >= limits.deepConcurrentJobs) {
+            throw new ApiError(429, "rate_limited", "Concurrent deep job limit exceeded.");
+          }
+        }
+      }
+
+      const apiKey = this.apiKey;
+      const authorization = authorizeUsage({
+        plan: input.plan,
+        depth: input.depth,
+        balance: this.balance,
+        apiKeyMaxDepth: apiKey.max_depth,
+        monthlyCreditLimit: apiKey.monthly_credit_limit,
+        monthToDateCredits: apiKey.month_to_date_credits,
+      });
+
+      if (!authorization.allowed) {
+        if (authorization.reason === "credits") {
+          throw new ApiError(402, "insufficient_credits", "Insufficient account credits.");
+        }
+
+        if (authorization.reason === "monthly_limit") {
+          throw new ApiError(
+            402,
+            "insufficient_credits",
+            "API key monthly credit limit would be exceeded.",
+          );
+        }
+
         throw new ApiError(
-          402,
-          "insufficient_credits",
-          "API key monthly credit limit would be exceeded.",
+          403,
+          "forbidden_depth",
+          "Requested depth is not allowed for this API key or plan.",
         );
       }
 
-      throw new ApiError(
-        403,
-        "forbidden_depth",
-        "Requested depth is not allowed for this API key or plan.",
-      );
+      const credits = getDepthCreditCost(input.depth);
+      const request: InternalRequest = {
+        id: `ctx_test_${this.nextRequestNumber}`,
+        workspace_id: input.apiKey.workspace_id,
+        idempotency_key: input.idempotencyKey,
+        idempotency_request_hash: input.idempotencyKey
+          ? createContextRequestIdempotencyHash(input)
+          : null,
+        query: input.query,
+        depth: input.depth,
+        platforms: input.platforms,
+        status: "queued",
+        spent_credits: credits,
+        error_code: null,
+        error_message: null,
+        result: null,
+      };
+
+      this.nextRequestNumber += 1;
+      this.balance -= credits;
+      apiKey.month_to_date_credits += credits;
+      this.ledger.push({
+        requestId: request.id,
+        credits: credits * -1,
+      });
+      this.requests.set(request.id, request);
+
+      return {
+        request,
+        created: true,
+      };
+    } finally {
+      releaseAccept();
     }
-
-    const credits = getDepthCreditCost(input.depth);
-    const request: InternalRequest = {
-      id: `ctx_test_${this.nextRequestNumber}`,
-      workspace_id: input.apiKey.workspace_id,
-      idempotency_key: input.idempotencyKey,
-      idempotency_request_hash: input.idempotencyKey
-        ? createContextRequestIdempotencyHash(input)
-        : null,
-      query: input.query,
-      depth: input.depth,
-      platforms: input.platforms,
-      status: "queued",
-      spent_credits: credits,
-      error_code: null,
-      error_message: null,
-      result: null,
-    };
-
-    this.nextRequestNumber += 1;
-    this.balance -= credits;
-    apiKey.month_to_date_credits += credits;
-    this.ledger.push({
-      requestId: request.id,
-      credits: credits * -1,
-    });
-    this.requests.set(request.id, request);
-
-    return {
-      request,
-      created: true,
-    };
   }
 
   async markRequestRunning(requestId: string): Promise<StoredContextRequest> {
@@ -373,6 +410,16 @@ class CompletingWorkerRunner implements ContextJobRunner {
       status: "completed",
       result,
     };
+  }
+}
+
+class ThrowingWorkerRunner implements ContextJobRunner {
+  async runContextJob(_requestId: string): Promise<ContextJobRunResult> {
+    throw new ApiError(
+      500,
+      "internal_error",
+      "Context worker did not respond before the request timeout.",
+    );
   }
 }
 
@@ -642,6 +689,44 @@ describe("context API routes", () => {
     await server.close();
   });
 
+  it("refunds credits when the synchronous worker call throws", async () => {
+    const store = new InMemoryContextStore("builder", 100);
+    const server = buildServer(createEnv(), {
+      store,
+      rateLimiter: new AllowRateLimiter(),
+      qstash: new CapturingQstashClient(),
+      workerRunner: new ThrowingWorkerRunner(),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers: authHeaders(),
+      payload: {
+        query: "new context APIs",
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({ error: { code: "internal_error" } });
+    expect(store.currentBalance).toBe(100);
+    expect(store.ledger).toEqual([
+      { requestId: "ctx_test_1", credits: -20 },
+      { requestId: "ctx_test_1", credits: 20 },
+    ]);
+    expect(store.apiKey.month_to_date_credits).toBe(0);
+
+    const request = await store.findRequestById(workspaceId, "ctx_test_1");
+
+    expect(request).toMatchObject({
+      status: "failed",
+      spent_credits: 0,
+      error_code: "internal_error",
+    });
+
+    await server.close();
+  });
+
   it("queues asynchronous requests and exposes status through GET", async () => {
     const store = new InMemoryContextStore("builder", 100);
     const qstash = new CapturingQstashClient();
@@ -689,6 +774,42 @@ describe("context API routes", () => {
         sources_considered: 0,
       },
     });
+
+    await server.close();
+  });
+
+  it("enforces async concurrency while accepting requests", async () => {
+    const store = new InMemoryContextStore("trial", 100);
+    const server = buildServer(createEnv(), {
+      store,
+      rateLimiter: new AllowRateLimiter(),
+      qstash: new CapturingQstashClient(),
+    });
+    const requests = await Promise.all([
+      server.inject({
+        method: "POST",
+        url: "/v1/context",
+        headers: authHeaders(),
+        payload: {
+          query: "first async request",
+          async: true,
+        },
+      }),
+      server.inject({
+        method: "POST",
+        url: "/v1/context",
+        headers: authHeaders(),
+        payload: {
+          query: "second async request",
+          async: true,
+        },
+      }),
+    ]);
+    const statusCodes = requests.map((response) => response.statusCode).sort();
+
+    expect(statusCodes).toEqual([202, 429]);
+    expect(store.currentBalance).toBe(80);
+    expect(store.ledger).toHaveLength(1);
 
     await server.close();
   });

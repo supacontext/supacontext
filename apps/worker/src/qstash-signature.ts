@@ -1,8 +1,11 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 type JwtPayload = {
-  exp?: number;
-  nbf?: number;
+  iss?: string;
+  sub?: string;
+  exp?: unknown;
+  nbf?: unknown;
+  body?: string;
 };
 
 function base64UrlDecode(value: string): Buffer {
@@ -13,14 +16,24 @@ function safeEqual(left: Buffer, right: Buffer): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function verifyWithKey(token: string, key: string, nowSeconds: number): boolean {
-  const [header, payload, signature, extra] = token.split(".");
+function bodyHash(value: string): string {
+  return createHash("sha256").update(value).digest("base64url").replace(/=+$/, "");
+}
+
+function verifyWithKey(input: {
+  token: string;
+  key: string;
+  nowSeconds: number;
+  body: string;
+  url: string;
+}): boolean {
+  const [header, payload, signature, extra] = input.token.split(".");
 
   if (!header || !payload || !signature || extra) {
     return false;
   }
 
-  const expected = createHmac("sha256", key).update(`${header}.${payload}`).digest();
+  const expected = createHmac("sha256", input.key).update(`${header}.${payload}`).digest();
   const actual = base64UrlDecode(signature);
 
   if (!safeEqual(actual, expected)) {
@@ -35,11 +48,25 @@ function verifyWithKey(token: string, key: string, nowSeconds: number): boolean 
     return false;
   }
 
-  if (claims.nbf !== undefined && claims.nbf > nowSeconds + 30) {
+  if (
+    claims.iss !== "Upstash" ||
+    claims.sub !== input.url ||
+    typeof claims.nbf !== "number" ||
+    typeof claims.exp !== "number" ||
+    !claims.body
+  ) {
     return false;
   }
 
-  if (claims.exp !== undefined && claims.exp < nowSeconds - 30) {
+  if (claims.nbf > input.nowSeconds + 30) {
+    return false;
+  }
+
+  if (claims.exp < input.nowSeconds - 30) {
+    return false;
+  }
+
+  if (claims.body.replace(/=+$/, "") !== bodyHash(input.body)) {
     return false;
   }
 
@@ -50,18 +77,28 @@ export function verifyQstashSignature(input: {
   signature: string | undefined;
   currentSigningKey: string | undefined;
   nextSigningKey: string | undefined;
+  body: string | undefined;
+  url: string;
   now?: Date;
 }): boolean {
-  if (!input.signature) {
+  if (!input.signature || input.body === undefined) {
     return false;
   }
 
-  const keys = [input.currentSigningKey, input.nextSigningKey].filter(
-    (key): key is string => Boolean(key),
+  const keys = [input.currentSigningKey, input.nextSigningKey].filter((key): key is string =>
+    Boolean(key),
   );
   const nowSeconds = Math.floor((input.now?.getTime() ?? Date.now()) / 1000);
 
-  return keys.some((key) => verifyWithKey(input.signature as string, key, nowSeconds));
+  return keys.some((key) =>
+    verifyWithKey({
+      token: input.signature as string,
+      key,
+      nowSeconds,
+      body: input.body as string,
+      url: input.url,
+    }),
+  );
 }
 
 export function verifyInternalToken(input: {

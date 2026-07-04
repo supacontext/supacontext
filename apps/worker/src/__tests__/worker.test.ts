@@ -28,7 +28,7 @@ import { chunkSources, normalizeCandidates } from "../content.js";
 import { ResearchPipeline } from "../pipeline.js";
 import type { PublicContextResult } from "../public-result.js";
 import { ContextJobProcessor } from "../server.js";
-import type { WorkerContextRequest, WorkerStore } from "../store.js";
+import type { WorkerClaimResult, WorkerContextRequest, WorkerStore } from "../store.js";
 import type { WebhookPayload, WebhookSender } from "../webhook.js";
 
 const requestId = "ctx_test_worker";
@@ -76,18 +76,29 @@ class InMemoryWorkerStore implements WorkerStore {
     return this.requests.get(requestIdToFind) ?? null;
   }
 
-  async markRequestRunning(requestIdToRun: string): Promise<WorkerContextRequest | null> {
+  async claimRequest(requestIdToRun: string): Promise<WorkerClaimResult> {
     const request = this.requests.get(requestIdToRun);
 
     if (!request) {
-      return null;
+      return {
+        request: null,
+        claimed: false,
+      };
     }
 
-    if (request.status === "queued" || request.status === "running") {
+    if (request.status === "queued") {
       request.status = "running";
+
+      return {
+        request,
+        claimed: true,
+      };
     }
 
-    return request;
+    return {
+      request,
+      claimed: false,
+    };
   }
 
   async completeRequest(
@@ -154,17 +165,19 @@ class ScriptedDeepSeek implements DeepSeekClient {
     this.evidenceCalls.push(input.evidence);
 
     return {
-      content: typeof this.researchOutput === "function"
-        ? this.researchOutput(input)
-        : this.researchOutput || validModelJson(input.evidence),
+      content:
+        typeof this.researchOutput === "function"
+          ? this.researchOutput(input)
+          : this.researchOutput || validModelJson(input.evidence),
     };
   }
 
   async repairJson(input: DeepSeekRepairInput): Promise<DeepSeekResult> {
     return {
-      content: typeof this.repairOutput === "function"
-        ? this.repairOutput(input)
-        : this.repairOutput || validModelJson(input.evidence, "Repaired answer"),
+      content:
+        typeof this.repairOutput === "function"
+          ? this.repairOutput(input)
+          : this.repairOutput || validModelJson(input.evidence, "Repaired answer"),
     };
   }
 }
@@ -191,7 +204,9 @@ class CountingFetchLayer implements FetchLayerClient {
     return [candidate("reddit", `Reddit evidence about ${input.query}`)];
   }
 
-  async fetchRedditThread(input: { candidate: NormalizedSourceCandidate }): Promise<NormalizedSourceCandidate> {
+  async fetchRedditThread(input: {
+    candidate: NormalizedSourceCandidate;
+  }): Promise<NormalizedSourceCandidate> {
     this.fetchCalls += 1;
 
     return {
@@ -266,14 +281,16 @@ class CountingSupadata implements SupadataClient {
   }
 }
 
-function createProviders(input: {
-  exa?: ExaClient;
-  fetchlayer?: FetchLayerClient;
-  xquik?: XquikClient;
-  supadata?: SupadataClient;
-  voyage?: VoyageClient;
-  deepseek?: DeepSeekClient;
-} = {}): ProviderClients {
+function createProviders(
+  input: {
+    exa?: ExaClient;
+    fetchlayer?: FetchLayerClient;
+    xquik?: XquikClient;
+    supadata?: SupadataClient;
+    voyage?: VoyageClient;
+    deepseek?: DeepSeekClient;
+  } = {},
+): ProviderClients {
   return {
     exa: input.exa ?? new CountingExa(),
     fetchlayer: input.fetchlayer ?? new CountingFetchLayer(),
@@ -284,9 +301,52 @@ function createProviders(input: {
   };
 }
 
+class BlockingPipeline extends ResearchPipeline {
+  calls = 0;
+  readonly started: Promise<void>;
+  private readonly unblock: Promise<void>;
+  private resolveStarted: () => void = () => {};
+  private releaseRun: () => void = () => {};
+
+  constructor(private readonly result: PublicContextResult) {
+    super(createProviders());
+    this.started = new Promise((resolve) => {
+      this.resolveStarted = resolve;
+    });
+    this.unblock = new Promise((resolve) => {
+      this.releaseRun = resolve;
+    });
+  }
+
+  release(): void {
+    this.releaseRun();
+  }
+
+  override async run(_request: Parameters<ResearchPipeline["run"]>[0]) {
+    this.calls += 1;
+    this.resolveStarted();
+    await this.unblock;
+
+    return {
+      result: this.result,
+      diagnostics: {
+        researchUnitsSpent: 1,
+        researchUnitLimit: 1,
+      },
+    };
+  }
+}
+
 function candidate(platform: Platform, content: string, url?: string): NormalizedSourceCandidate {
   return {
-    provider: platform === "reddit" ? "fetchlayer" : platform === "x" ? "xquik" : platform === "youtube" ? "supadata" : "exa",
+    provider:
+      platform === "reddit"
+        ? "fetchlayer"
+        : platform === "x"
+          ? "xquik"
+          : platform === "youtube"
+            ? "supadata"
+            : "exa",
     platform,
     title: `${platform} source`,
     url: url ?? `https://example.com/${platform}/${encodeURIComponent(content.slice(0, 16))}`,
@@ -296,7 +356,10 @@ function candidate(platform: Platform, content: string, url?: string): Normalize
   };
 }
 
-function validModelJson(evidence: DeepSeekResearchInput["evidence"], answer = "Compiled answer"): string {
+function validModelJson(
+  evidence: DeepSeekResearchInput["evidence"],
+  answer = "Compiled answer",
+): string {
   return JSON.stringify({
     answer,
     context_pack: evidence.slice(0, 2).map((item) => ({
@@ -309,12 +372,14 @@ function validModelJson(evidence: DeepSeekResearchInput["evidence"], answer = "C
   });
 }
 
-function pipelineRequest(input: {
-  depth?: ContextDepth;
-  platforms?: Platform[];
-  platformMode?: PlatformMode;
-  query?: string;
-} = {}) {
+function pipelineRequest(
+  input: {
+    depth?: ContextDepth;
+    platforms?: Platform[];
+    platformMode?: PlatformMode;
+    query?: string;
+  } = {},
+) {
   return {
     id: requestId,
     workspaceId: "workspace_1",
@@ -323,6 +388,38 @@ function pipelineRequest(input: {
     platforms: input.platforms ?? ["web", "reddit", "x", "youtube"],
     platformMode: input.platformMode ?? "auto",
     creditsCharged: input.depth === "fast" ? 5 : 20,
+  };
+}
+
+function completedPublicResult(): PublicContextResult {
+  return {
+    answer: "Compiled answer",
+    context_pack: [
+      {
+        claim: "A source supports this answer.",
+        confidence: "high",
+        supporting_sources: ["src_1"],
+      },
+    ],
+    sources: [
+      {
+        id: "src_1",
+        platform: "web",
+        title: "Web source",
+        url: "https://example.com/source",
+        published_at: null,
+        summary: "Useful web evidence.",
+      },
+    ],
+    gaps: [],
+    usage: {
+      credits_charged: 20,
+      depth: "standard",
+      platforms_used: ["web"],
+      sources_considered: 1,
+      sources_used: 1,
+      cached: false,
+    },
   };
 }
 
@@ -367,7 +464,10 @@ describe("research worker pipeline", () => {
         title: "Long video",
         url: "https://www.youtube.com/watch?v=long",
         publishedAt: "2026-06-01T00:00:00.000Z",
-        content: Array.from({ length: 20 }, (_, index) => `segment ${index} transcript text repeated repeated repeated`).join("\n"),
+        content: Array.from(
+          { length: 20 },
+          (_, index) => `segment ${index} transcript text repeated repeated repeated`,
+        ).join("\n"),
         summary: "Long transcript",
         metadata: {
           transcriptSegments: Array.from({ length: 20 }, (_, index) => ({
@@ -392,7 +492,9 @@ describe("research worker pipeline", () => {
   it("uses Voyage reranking for large chunk sets and sends selected chunks to synthesis", async () => {
     const largeContent = Array.from({ length: 28 }, (_, index) =>
       index === 16
-        ? "target-ranked paragraph with context API buyer evidence and strong relevance. ".repeat(18)
+        ? "target-ranked paragraph with context API buyer evidence and strong relevance. ".repeat(
+            18,
+          )
         : `ordinary paragraph ${index} with context API background and filler details. `.repeat(18),
     ).join("\n\n");
     const deepseek = new ScriptedDeepSeek((input) => validModelJson(input.evidence));
@@ -444,7 +546,9 @@ describe("research worker pipeline", () => {
     const run = await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
 
     expect(run.result.sources).toEqual([]);
-    expect(run.result.gaps).toContain("web provider was unavailable or returned no normalized evidence.");
+    expect(run.result.gaps).toContain(
+      "web provider was unavailable or returned no normalized evidence.",
+    );
   });
 
   it("marks a job failed when model JSON remains invalid", async () => {
@@ -500,11 +604,37 @@ describe("research worker pipeline", () => {
     });
   });
 
+  it("skips duplicate deliveries while a job is already running", async () => {
+    const store = new InMemoryWorkerStore({
+      platforms: ["web"],
+      platformMode: "manual",
+    });
+    const pipeline = new BlockingPipeline(completedPublicResult());
+    const processor = new ContextJobProcessor(store, pipeline, new CapturingWebhookSender());
+
+    const first = processor.process(requestId);
+    await pipeline.started;
+    const duplicate = await processor.process(requestId);
+
+    pipeline.release();
+    const completed = await first;
+
+    expect(duplicate).toEqual({
+      id: requestId,
+      status: "skipped",
+      reason: "Context request is already running.",
+    });
+    expect(completed.status).toBe("completed");
+    expect(pipeline.calls).toBe(1);
+  });
+
   it("provider mocks emit provider call logs without raw payloads", async () => {
     const logs: ProviderCallLogInput[] = [];
-    const pipeline = new ResearchPipeline(createMockProviderClients((input) => {
-      logs.push(input);
-    }));
+    const pipeline = new ResearchPipeline(
+      createMockProviderClients((input) => {
+        logs.push(input);
+      }),
+    );
 
     await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
 
