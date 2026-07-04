@@ -2,8 +2,8 @@ import Link from "next/link";
 import { PublicAuthControls } from "./auth-controls";
 
 const publicLinks = [
-  { href: "/pricing", label: "Pricing" },
   { href: "/docs", label: "Docs" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/docs/quickstart", label: "Quickstart" },
 ];
 
@@ -12,7 +12,7 @@ export function SiteHeader() {
     <header className="siteHeader">
       <Link className="brand" href="/">
         <span className="brandMark" aria-hidden="true" />
-        SupaContext
+        <span>SupaContext</span>
       </Link>
       <nav className="publicNav" aria-label="Main navigation">
         {publicLinks.map((link) => (
