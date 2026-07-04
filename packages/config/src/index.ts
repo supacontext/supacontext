@@ -48,7 +48,6 @@ const supabaseSchema = {
 const clerkSchema = {
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredString,
   CLERK_SECRET_KEY: requiredString,
-  CLERK_WEBHOOK_SECRET: requiredString,
 };
 
 const creemSchema = {
