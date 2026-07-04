@@ -5,13 +5,25 @@ import { useState } from "react";
 
 const command = "npm i @supacontext/sdk";
 
+type CopyStatus = "idle" | "copied" | "failed";
+
 export function CopyCommand() {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
 
   async function copyCommand() {
-    await navigator.clipboard.writeText(command);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+    setCopyStatus("idle");
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is not available.");
+      }
+
+      await navigator.clipboard.writeText(command);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 1400);
+    } catch {
+      setCopyStatus("failed");
+    }
   }
 
   return (
@@ -20,13 +32,24 @@ export function CopyCommand() {
         <span>$</span>
         <code>{command}</code>
       </div>
+      {copyStatus === "idle" ? null : (
+        <p className="scCommandFeedback" data-status={copyStatus} role="status">
+          {copyStatus === "copied" ? "Copied" : "Copy failed. Select the command manually."}
+        </p>
+      )}
       <button
-        aria-label="Copy install command"
+        aria-label={
+          copyStatus === "failed" ? "Retry copying install command" : "Copy install command"
+        }
         className="scCommandCopy"
         onClick={copyCommand}
         type="button"
       >
-        {copied ? <Check aria-hidden="true" size={16} /> : <Copy aria-hidden="true" size={16} />}
+        {copyStatus === "copied" ? (
+          <Check aria-hidden="true" size={16} />
+        ) : (
+          <Copy aria-hidden="true" size={16} />
+        )}
       </button>
     </div>
   );

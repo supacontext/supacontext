@@ -423,6 +423,18 @@ h3 {
   color: var(--primary);
 }
 
+.scCommandFeedback {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.scCommandFeedback[data-status="failed"] {
+  color: #b42318;
+}
+
 .scSourceStrip {
   position: relative;
   z-index: 1;
@@ -482,15 +494,15 @@ h3 {
 }
 
 .redditSourceLogo {
-  background-image: url("https://cdn.simpleicons.org/reddit/FF4500");
+  background-image: url("/source-logos/reddit.svg");
 }
 
 .xSourceLogo {
-  background-image: url("https://cdn.simpleicons.org/x/111827");
+  background-image: url("/source-logos/x.svg");
 }
 
 .youtubeSourceLogo {
-  background-image: url("https://cdn.simpleicons.org/youtube/FF0000");
+  background-image: url("/source-logos/youtube.svg");
 }
 
 @keyframes sourceMarquee {

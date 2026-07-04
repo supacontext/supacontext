@@ -41,6 +41,9 @@ const workflowSteps = [
     text: "Responses include answer text, context packs, source metadata, gaps, and usage accounting.",
   },
 ];
+const homepagePlanSlugs = ["trial", "starter", "builder", "pro"] as const satisfies ReadonlyArray<
+  keyof typeof PLANS
+>;
 
 export default function HomePage() {
   return (
@@ -237,14 +240,16 @@ export default function HomePage() {
               <DatabaseZap aria-hidden="true" size={22} />
               <h3>Credit plans</h3>
               <div className="rows">
-                {Object.values(PLANS)
-                  .slice(0, 4)
-                  .map((plan) => (
+                {homepagePlanSlugs.map((planSlug) => {
+                  const plan = PLANS[planSlug];
+
+                  return (
                     <div className="row" key={plan.slug}>
                       <span>{plan.name}</span>
                       <strong>{plan.includedCredits.toLocaleString()} credits</strong>
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             </article>
             <article className="card">
