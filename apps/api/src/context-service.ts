@@ -166,7 +166,6 @@ export class ContextService {
       };
     }
 
-    await this.store.markRequestRunning(accepted.request.id);
     let job: ContextJobRunResult;
 
     try {
@@ -183,6 +182,13 @@ export class ContextService {
 
     if (job.status === "failed") {
       throw mapWorkerFailureToApiError(job.error);
+    }
+
+    if (job.status === "skipped") {
+      await this.store.failContextRequest(accepted.request.id, "internal_error", job.reason, {
+        refundCredits: true,
+      });
+      throw new ApiError(500, "internal_error", "Context worker skipped the request.");
     }
 
     const completed = await this.store.findRequestById(apiKey.workspace_id, accepted.request.id);

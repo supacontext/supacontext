@@ -402,13 +402,32 @@ class CompletingWorkerRunner implements ContextJobRunner {
       };
     }
 
-    const result = createCompletedResult(request);
+    if (request.status !== "queued") {
+      return {
+        id: requestId,
+        status: "skipped",
+        reason: `Context request is already ${request.status}.`,
+      };
+    }
+
+    const runningRequest = await this.store.markRequestRunning(requestId);
+    const result = createCompletedResult(runningRequest);
     await this.store.completeContextRequest(requestId, result);
 
     return {
       id: requestId,
       status: "completed",
       result,
+    };
+  }
+}
+
+class SkippingWorkerRunner implements ContextJobRunner {
+  async runContextJob(requestId: string): Promise<ContextJobRunResult> {
+    return {
+      id: requestId,
+      status: "skipped",
+      reason: "Context request is already running.",
     };
   }
 }
@@ -696,6 +715,44 @@ describe("context API routes", () => {
       rateLimiter: new AllowRateLimiter(),
       qstash: new CapturingQstashClient(),
       workerRunner: new ThrowingWorkerRunner(),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers: authHeaders(),
+      payload: {
+        query: "new context APIs",
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({ error: { code: "internal_error" } });
+    expect(store.currentBalance).toBe(100);
+    expect(store.ledger).toEqual([
+      { requestId: "ctx_test_1", credits: -20 },
+      { requestId: "ctx_test_1", credits: 20 },
+    ]);
+    expect(store.apiKey.month_to_date_credits).toBe(0);
+
+    const request = await store.findRequestById(workspaceId, "ctx_test_1");
+
+    expect(request).toMatchObject({
+      status: "failed",
+      spent_credits: 0,
+      error_code: "internal_error",
+    });
+
+    await server.close();
+  });
+
+  it("refunds credits when the synchronous worker skips processing", async () => {
+    const store = new InMemoryContextStore("builder", 100);
+    const server = buildServer(createEnv(), {
+      store,
+      rateLimiter: new AllowRateLimiter(),
+      qstash: new CapturingQstashClient(),
+      workerRunner: new SkippingWorkerRunner(),
     });
 
     const response = await server.inject({

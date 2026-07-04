@@ -317,6 +317,26 @@ function youtubeVideoId(url: string): string | undefined {
   }
 }
 
+function normalizeRedditUrl(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    if (value.startsWith("//")) {
+      return new URL(`https:${value}`).toString();
+    }
+
+    if (value.startsWith("/")) {
+      return new URL(value, "https://www.reddit.com").toString();
+    }
+
+    return new URL(value).toString();
+  } catch {
+    return null;
+  }
+}
+
 function buildCandidate(input: {
   provider: ProviderName;
   platform: Platform;
@@ -674,7 +694,8 @@ class HttpFetchLayerClient extends LoggedProvider implements FetchLayerClient {
 }
 
 function mapRedditResult(item: JsonRecord): NormalizedSourceCandidate | null {
-  const url = stringValue(item.url) ?? stringValue(item.permalink);
+  const url =
+    normalizeRedditUrl(stringValue(item.url)) ?? normalizeRedditUrl(stringValue(item.permalink));
   const title = stringValue(item.title) ?? stringValue(item.subreddit);
   const body = [
     stringValue(item.selftext),
