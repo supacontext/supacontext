@@ -19,6 +19,9 @@ const sourceLogos = [
   { name: "X", logoClass: "xSourceLogo" },
   { name: "YouTube", logoClass: "youtubeSourceLogo" },
 ];
+const sourceMarqueeItems = Array.from({ length: 3 }, (_, repeat) =>
+  sourceLogos.map((source) => ({ ...source, key: `${repeat}-${source.name}` })),
+).flat();
 const productPoints = [
   "One endpoint for web, social, forum, and video context.",
   "Compact cited JSON shaped for agent prompts and tool calls.",
@@ -68,8 +71,8 @@ export default function HomePage() {
               <div className="scSourceTrack" aria-hidden="true">
                 {[0, 1].map((group) => (
                   <div className="scSourceGroup" key={group}>
-                    {sourceLogos.map((source) => (
-                      <div className="scSourceItem" key={`${group}-${source.name}`}>
+                    {sourceMarqueeItems.map((source) => (
+                      <div className="scSourceItem" key={`${group}-${source.key}`}>
                         <span className={`scSourceLogo ${source.logoClass}`} aria-hidden="true">
                           {source.name === "Web" ? <Globe size={22} strokeWidth={2.3} /> : null}
                         </span>
