@@ -23,18 +23,18 @@ export function PublicAuthControls() {
         </>
       ) : (
         <>
-        <SignInButton mode="modal">
-          <button className="button secondaryButton" type="button">
-            <LogIn aria-hidden="true" size={16} />
-            Sign in
-          </button>
-        </SignInButton>
-        <SignUpButton mode="modal">
-          <button className="button primaryButton" type="button">
-            Start free
-            <ArrowRight aria-hidden="true" size={16} />
-          </button>
-        </SignUpButton>
+          <SignInButton mode="modal">
+            <button className="button secondaryButton" type="button">
+              <LogIn aria-hidden="true" size={16} />
+              Sign in
+            </button>
+          </SignInButton>
+          <SignUpButton mode="modal">
+            <button className="button primaryButton" type="button">
+              Start building
+              <ArrowRight aria-hidden="true" size={16} />
+            </button>
+          </SignUpButton>
         </>
       )}
     </div>

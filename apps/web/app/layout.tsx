@@ -1,6 +1,23 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { DM_Mono, DM_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+});
+
+const dmMono = DM_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-dm-mono",
+});
 
 export const metadata: Metadata = {
   title: "SupaContext",
@@ -15,7 +32,9 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body>{children}</body>
+        <body className={`${dmSans.variable} ${spaceGrotesk.variable} ${dmMono.variable}`}>
+          {children}
+        </body>
       </html>
     </ClerkProvider>
   );
