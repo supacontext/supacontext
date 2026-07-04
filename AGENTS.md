@@ -97,28 +97,6 @@ This app is in active development and has no production users yet.
 
 Do not claim completion without verification.
 
-For backend work:
-
 * Run typecheck.
 * Run lint.
 * Run tests.
-* Verify API key auth.
-* Verify credit ledger behavior.
-* Verify depth restrictions.
-* Verify idempotency when relevant.
-
-For frontend work:
-
-* Run typecheck.
-* Run lint.
-* Run build.
-* Verify forms, loading states, empty states, and protected routes.
-
-For worker/provider work:
-
-* Use mocks for deterministic tests.
-* Test provider failure handling.
-* Test invalid model JSON.
-* Test no raw provider output in public responses.
-
-If a command cannot be run, say exactly why and what should be run manually.

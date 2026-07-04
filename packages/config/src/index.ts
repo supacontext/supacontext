@@ -48,7 +48,6 @@ const supabaseSchema = {
 const clerkSchema = {
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredString,
   CLERK_SECRET_KEY: requiredString,
-  CLERK_WEBHOOK_SECRET: requiredString,
 };
 
 const creemSchema = {
@@ -63,6 +62,7 @@ const creemSchema = {
 const upstashSchema = {
   UPSTASH_REDIS_REST_URL: optionalUrl,
   UPSTASH_REDIS_REST_TOKEN: optionalString,
+  QSTASH_URL: optionalUrl,
   QSTASH_TOKEN: optionalString,
   QSTASH_CURRENT_SIGNING_KEY: optionalString,
   QSTASH_NEXT_SIGNING_KEY: optionalString,

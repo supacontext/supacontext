@@ -51,6 +51,7 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
     createQstashClient({
       nodeEnv: env.NODE_ENV,
       qstashToken: env.QSTASH_TOKEN,
+      qstashUrl: env.QSTASH_URL,
       workerUrl: env.WORKER_URL,
       warn: (message) => server.log.warn(message),
     });

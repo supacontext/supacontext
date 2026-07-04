@@ -60,6 +60,7 @@ class HttpQstashClient implements QstashClient {
   constructor(
     private readonly token: string,
     private readonly workerUrl: string,
+    private readonly qstashUrl: string,
   ) {}
 
   async enqueueContextJob(input: EnqueueContextJobInput): Promise<EnqueueContextJobResult> {
@@ -68,7 +69,7 @@ class HttpQstashClient implements QstashClient {
 
     try {
       response = await fetch(
-        `https://qstash.upstash.io/v2/publish/${encodeURIComponent(destination)}`,
+        `${this.qstashUrl.replace(/\/$/, "")}/v2/publish/${encodeURIComponent(destination)}`,
         {
           method: "POST",
           headers: {
@@ -99,11 +100,16 @@ class HttpQstashClient implements QstashClient {
 export function createQstashClient(input: {
   nodeEnv: string;
   qstashToken: string | undefined;
+  qstashUrl: string | undefined;
   workerUrl: string;
   warn?: (message: string) => void;
 }): QstashClient {
   if (input.qstashToken) {
-    return new HttpQstashClient(input.qstashToken, input.workerUrl);
+    return new HttpQstashClient(
+      input.qstashToken,
+      input.workerUrl,
+      input.qstashUrl ?? "https://qstash.upstash.io",
+    );
   }
 
   if (input.nodeEnv === "production") {
