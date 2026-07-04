@@ -1,0 +1,28 @@
+{
+  "name": "@supacontext/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node ../../scripts/with-root-env.mjs tsx watch src/index.ts",
+    "lint": "eslint . --max-warnings 0",
+    "start": "node ../../scripts/with-root-env.mjs node dist/index.js",
+    "test": "vitest run --exclude dist/**",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supacontext/agent": "workspace:*",
+    "@supacontext/config": "workspace:*",
+    "@supacontext/core": "workspace:*",
+    "@supacontext/db": "workspace:*",
+    "@supacontext/providers": "workspace:*",
+    "fastify": "^5.6.2",
+    "postgres": "^3.4.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@supacontext/eslint-config": "workspace:*",
+    "@supacontext/tsconfig": "workspace:*"
+  }
+}

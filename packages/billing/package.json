@@ -1,0 +1,25 @@
+{
+  "name": "@supacontext/billing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --exclude dist/**",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supacontext/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@supacontext/eslint-config": "workspace:*",
+    "@supacontext/tsconfig": "workspace:*"
+  }
+}

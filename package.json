@@ -1,0 +1,29 @@
+{
+  "name": "supacontext",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/with-root-env.mjs turbo dev",
+    "build": "node scripts/with-root-env.mjs turbo build",
+    "lint": "node scripts/with-root-env.mjs turbo lint",
+    "typecheck": "node scripts/with-root-env.mjs turbo typecheck",
+    "test": "node scripts/with-root-env.mjs turbo test",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.1",
+    "prettier": "^3.7.4",
+    "supabase": "^2.109.0",
+    "tsx": "^4.21.0",
+    "turbo": "^2.10.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
