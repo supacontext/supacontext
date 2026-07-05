@@ -26,6 +26,24 @@ const productPoints = [
   "Compact cited JSON shaped for agent prompts and tool calls.",
   "Depth controls that trade latency, cost, and coverage explicitly.",
 ];
+const heroBenefits = [
+  {
+    title: "Unified Access",
+    text: "Web, Reddit, X, and YouTube through one endpoint. No connector sprawl.",
+  },
+  {
+    title: "Less Token Waste",
+    text: "Send compact context instead of raw pages, threads, and transcripts.",
+  },
+  {
+    title: "Better Agent Answers",
+    text: "Fresh, cited evidence from multiple sources means less guessing.",
+  },
+  {
+    title: "No Tool Overload",
+    text: "Give agents one context tool to choose, not a crowded toolbox.",
+  },
+];
 const workflowSteps = [
   {
     title: "Agent asks for context",
@@ -91,6 +109,16 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+        </section>
+
+        <section className="scBenefitStrip" aria-label="SupaContext benefits">
+          {heroBenefits.map((benefit, index) => (
+            <article className="scBenefitCard" key={benefit.title}>
+              <span className="scBenefitNumber">/{String(index + 1).padStart(2, "0")}</span>
+              <h2>{benefit.title}</h2>
+              <p>{benefit.text}</p>
+            </article>
+          ))}
         </section>
 
         <section className="section splitSection connectorSection">
