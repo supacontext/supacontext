@@ -11,6 +11,7 @@
   --primary: #0562ef;
   --primary-dark: #034ec2;
   --primary-soft: #d9e9ff;
+  --site-header-height: 64px;
   --blue: #0562ef;
   --cyan: #1fc7ff;
   --amber: #b45309;
@@ -162,6 +163,7 @@ h3 {
   align-items: center;
   gap: 20px;
   width: 100%;
+  min-height: var(--site-header-height);
   border-bottom: 1px solid transparent;
   padding: 12px max(24px, calc((100vw - 1180px) / 2));
   background: transparent;
@@ -299,14 +301,14 @@ h3 {
 }
 
 .primaryButton {
-  border-color: #075de0;
-  color: #ffffff;
-  background: #0667e8;
+  border-color: var(--primary);
+  color: var(--surface);
+  background: var(--primary);
 }
 
 .primaryButton:hover {
-  border-color: #034ec2;
-  background: #055bd1;
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
 }
 
 .buttonDivider {
@@ -353,7 +355,7 @@ h3 {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  margin-top: -64px;
+  margin-top: calc(-1 * var(--site-header-height));
   padding: 118px 24px 76px;
   background:
     linear-gradient(180deg, rgba(244, 249, 255, 0.08) 0%, rgba(244, 249, 255, 0.2) 44%, rgba(234, 242, 255, 0.46) 100%),
@@ -363,7 +365,31 @@ h3 {
 
 .scHeroDotted::before,
 .scHeroDotted::after {
-  display: none;
+  position: absolute;
+  top: 18%;
+  width: min(38vw, 560px);
+  height: 78%;
+  content: "";
+  background-image: radial-gradient(circle, rgba(31, 199, 255, 0.86) 1.25px, transparent 1.25px);
+  background-size: 16px 16px;
+  mask-image: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.74) 42%, transparent 72%);
+  opacity: 0.84;
+  pointer-events: none;
+}
+
+.scHeroDotted::before {
+  left: -7%;
+}
+
+.scHeroDotted::after {
+  right: -7%;
+}
+
+@media (min-width: 821px) {
+  .scHeroDotted::before,
+  .scHeroDotted::after {
+    display: none;
+  }
 }
 
 .scHeroCopy {
@@ -444,6 +470,11 @@ h3 {
   color: #027a48;
 }
 
+.scInstallCommand[data-status="failed"] {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 .scInstallCommand div {
   display: inline-flex;
   align-items: center;
@@ -484,6 +515,10 @@ h3 {
 
 .scInstallCommand[data-status="copied"] .scCommandCopy {
   color: #027a48;
+}
+
+.scInstallCommand[data-status="failed"] .scCommandCopy {
+  color: var(--red);
 }
 
 .scSourceStrip {

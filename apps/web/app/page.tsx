@@ -52,8 +52,7 @@ export default function HomePage() {
         <section className="scHero scHeroDotted">
           <div className="scHeroCopy">
             <h1>
-              The context API for {" "}
-              <span className="heroHeadingPhrase">
+              The context API for<span className="heroHeadingPhrase">
                 <span className="heroHeadingDecoration" aria-hidden="true" />
                 agents
               </span>
