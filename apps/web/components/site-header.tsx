@@ -37,7 +37,7 @@ export function SiteHeader() {
       <header className={`siteHeader${isScrolled ? " siteHeaderScrolled" : ""}`}>
         <Link className="brand" href="/">
           <LogoMark className="brandMark" />
-          <span>SupaContext</span>
+          <span>supacontext</span>
         </Link>
         <nav className="publicNav" aria-label="Main navigation">
           {publicLinks.map((link) => (
