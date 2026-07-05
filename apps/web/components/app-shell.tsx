@@ -1,7 +1,6 @@
 import { BarChart3, CreditCard, Gauge, KeyRound, Play, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { AuthProvider } from "./auth-provider";
 import { UserMenu } from "./user-menu";
 
 const appLinks = [
@@ -43,9 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="topbarEyebrow">Developer dashboard</p>
             <p className="topbarTitle">Live context for agent workflows</p>
           </div>
-          <AuthProvider>
-            <UserMenu />
-          </AuthProvider>
+          <UserMenu />
         </header>
         {children}
       </div>
