@@ -3,7 +3,6 @@ import {
   Braces,
   CheckCircle2,
   DatabaseZap,
-  Globe,
   Layers3,
   RadioTower,
 } from "lucide-react";
@@ -16,7 +15,7 @@ const platforms = ["web", "Reddit", "X", "YouTube"];
 const sourceLogos = [
   { name: "Web", logoClass: "webSourceLogo" },
   { name: "Reddit", logoClass: "redditSourceLogo" },
-  { name: "X", logoClass: "xSourceLogo" },
+  { name: "X / Twitter", logoClass: "xSourceLogo" },
   { name: "YouTube", logoClass: "youtubeSourceLogo" },
 ];
 const sourceMarqueeItems = Array.from({ length: 3 }, (_, repeat) =>
@@ -52,14 +51,22 @@ export default function HomePage() {
       <main className="scMarketing">
         <section className="scHero scHeroDotted">
           <div className="scHeroCopy">
-            <h1>Public context agents can cite and trust.</h1>
+            <h1>
+              The context API for {" "}
+              <span className="heroHeadingPhrase">
+                <span className="heroHeadingDecoration" aria-hidden="true" />
+                agents
+              </span>
+              <span className="heroHeadingAccent">.</span>
+            </h1>
             <p className="heroText">
-              SupaContext turns web, Reddit, X, and YouTube into compact cited JSON your agents can
-              trust. Choose the depth, control the spend, and keep every answer tied to sources.
+              Supacontext replaces separate Web, Reddit, X, and YouTube integrations with one
+              endpoint that returns compact, cited JSON for AI agents.
             </p>
             <div className="heroActions">
               <Link className="button primaryButton" href="/dashboard">
-                Start building
+                Start Free
+                <span className="buttonDivider" aria-hidden="true" />
                 <ArrowRight aria-hidden="true" size={16} />
               </Link>
               <Link className="button secondaryButton" href="/docs">
@@ -69,16 +76,14 @@ export default function HomePage() {
             <CopyCommand />
           </div>
           <div className="scSourceStrip" aria-label="Sources SupaContext scans">
-            <span>Scans public context across</span>
+            <span>One endpoint across</span>
             <div className="scSourceMarquee">
               <div className="scSourceTrack" aria-hidden="true">
                 {[0, 1].map((group) => (
                   <div className="scSourceGroup" key={group}>
                     {sourceMarqueeItems.map((source) => (
                       <div className="scSourceItem" key={`${group}-${source.key}`}>
-                        <span className={`scSourceLogo ${source.logoClass}`} aria-hidden="true">
-                          {source.name === "Web" ? <Globe size={22} strokeWidth={2.3} /> : null}
-                        </span>
+                        <span className={`scSourceLogo ${source.logoClass}`} aria-hidden="true" />
                         <strong>{source.name}</strong>
                       </div>
                     ))}
@@ -86,17 +91,6 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        <section className="blueShowcase" aria-label="SupaContext context pipeline">
-          <div className="signalBeam">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="showcaseMark" aria-hidden="true">
-            SC
           </div>
         </section>
 

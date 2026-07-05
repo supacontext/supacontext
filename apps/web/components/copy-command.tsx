@@ -20,23 +20,18 @@ export function CopyCommand() {
 
       await navigator.clipboard.writeText(command);
       setCopyStatus("copied");
-      window.setTimeout(() => setCopyStatus("idle"), 1400);
+      window.setTimeout(() => setCopyStatus("idle"), 2000);
     } catch {
       setCopyStatus("failed");
     }
   }
 
   return (
-    <div className="scInstallCommand">
+    <div className="scInstallCommand" data-status={copyStatus} aria-live="polite">
       <div>
-        <span>$</span>
-        <code>{command}</code>
+        {copyStatus === "copied" ? null : <span>$</span>}
+        <code>{copyStatus === "copied" ? "Copied" : command}</code>
       </div>
-      {copyStatus === "idle" ? null : (
-        <p className="scCommandFeedback" data-status={copyStatus} role="status">
-          {copyStatus === "copied" ? "Copied" : "Copy failed. Select the command manually."}
-        </p>
-      )}
       <button
         aria-label={
           copyStatus === "failed" ? "Retry copying install command" : "Copy install command"

@@ -144,6 +144,15 @@ h3 {
   font-size: 1.08rem;
 }
 
+.siteHeaderSentinel {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
 .siteHeader {
   position: sticky;
   top: 0;
@@ -153,9 +162,19 @@ h3 {
   align-items: center;
   gap: 20px;
   width: 100%;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid transparent;
   padding: 12px max(24px, calc((100vw - 1180px) / 2));
-  background: rgba(244, 249, 255, 0.86);
+  background: transparent;
+  backdrop-filter: blur(0);
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    backdrop-filter 180ms ease;
+}
+
+.siteHeaderScrolled {
+  border-bottom-color: rgba(198, 215, 239, 0.86);
+  background: rgba(244, 249, 255, 0.88);
   backdrop-filter: blur(18px);
 }
 
@@ -254,14 +273,14 @@ h3 {
 
 .button {
   display: inline-flex;
-  min-height: 42px;
+  min-height: 40px;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid transparent;
   border-radius: 0;
-  padding: 11px 18px;
-  font-weight: 800;
+  padding: 10px 18px;
+  font-weight: 500;
   line-height: 1;
   transition:
     background 150ms ease,
@@ -280,12 +299,25 @@ h3 {
 }
 
 .primaryButton {
+  border-color: #075de0;
   color: #ffffff;
-  background: var(--primary);
+  background: #0667e8;
 }
 
 .primaryButton:hover {
-  background: var(--primary-dark);
+  border-color: #034ec2;
+  background: #055bd1;
+}
+
+.buttonDivider {
+  align-self: stretch;
+  width: 1px;
+  margin-block: -10px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.siteHeader .buttonDivider {
+  margin-block: -9px;
 }
 
 .secondaryButton {
@@ -316,35 +348,22 @@ h3 {
 .scHero {
   position: relative;
   display: flex;
-  min-height: 592px;
+  min-height: clamp(720px, 88dvh, 840px);
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   overflow: hidden;
-  padding: 36px 24px 42px;
+  margin-top: -64px;
+  padding: 118px 24px 76px;
+  background:
+    linear-gradient(180deg, rgba(244, 249, 255, 0.08) 0%, rgba(244, 249, 255, 0.2) 44%, rgba(234, 242, 255, 0.46) 100%),
+    url("/images/supacontext-hero.avif") center bottom / cover no-repeat;
   text-align: center;
 }
 
 .scHeroDotted::before,
 .scHeroDotted::after {
-  position: absolute;
-  top: 18%;
-  width: min(38vw, 560px);
-  height: 78%;
-  content: "";
-  background-image: radial-gradient(circle, rgba(31, 199, 255, 0.86) 1.25px, transparent 1.25px);
-  background-size: 16px 16px;
-  mask-image: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.74) 42%, transparent 72%);
-  opacity: 0.84;
-  pointer-events: none;
-}
-
-.scHeroDotted::before {
-  left: -7%;
-}
-
-.scHeroDotted::after {
-  right: -7%;
+  display: none;
 }
 
 .scHeroCopy {
@@ -353,15 +372,40 @@ h3 {
   display: grid;
   justify-items: center;
   max-width: 1120px;
-  margin: 14px auto 0;
+  margin: 0 auto;
+  transform: translateY(-28px);
 }
 
 .scHeroCopy h1 {
-  max-width: 980px;
+  max-width: 1280px;
   margin-bottom: 22px;
-  font-size: clamp(3.35rem, 4.05vw, 4.55rem);
-  font-weight: 700;
+  font-size: clamp(3.15rem, 3.55vw, 4.35rem);
+  font-weight: 560;
   line-height: 0.98;
+}
+
+.heroHeadingAccent {
+  color: var(--primary);
+}
+
+.heroHeadingPhrase {
+  display: inline;
+  white-space: nowrap;
+}
+
+.heroHeadingDecoration {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.12em;
+  vertical-align: -0.12em;
+  background: url("/images/supacontext-hero-decoration.webp") center / contain no-repeat;
+}
+
+@media (min-width: 1120px) {
+  .scHeroCopy h1 {
+    white-space: nowrap;
+  }
 }
 
 .heroText,
@@ -372,22 +416,32 @@ h3 {
 
 .heroText {
   max-width: 720px;
-  margin-bottom: 28px;
+  margin-bottom: 34px;
   font-size: 1rem;
 }
 
 .scInstallCommand {
   display: flex;
+  min-height: 44px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   min-width: min(400px, 100%);
   border: 1px dashed var(--line-strong);
-  margin-top: 12px;
-  padding: 11px 16px;
+  margin-top: 14px;
+  padding: 8px 14px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.5);
   text-align: left;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background 150ms ease;
+}
+
+.scInstallCommand[data-status="copied"] {
+  border-color: #027a48;
+  color: #027a48;
 }
 
 .scInstallCommand div {
@@ -401,16 +455,21 @@ h3 {
   font-weight: 900;
 }
 
+.scInstallCommand[data-status="copied"] span {
+  color: #027a48;
+}
+
 .scInstallCommand code {
   border: 0;
   padding: 0;
+  color: inherit;
   background: transparent;
 }
 
 .scCommandCopy {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -423,27 +482,24 @@ h3 {
   color: var(--primary);
 }
 
-.scCommandFeedback {
-  margin: 0 0 0 auto;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.scCommandFeedback[data-status="failed"] {
-  color: #b42318;
+.scInstallCommand[data-status="copied"] .scCommandCopy {
+  color: #027a48;
 }
 
 .scSourceStrip {
-  position: relative;
+  position: absolute;
+  right: 24px;
+  bottom: clamp(36px, 5.5vh, 58px);
+  left: 24px;
   z-index: 1;
   display: grid;
   gap: 14px;
-  width: min(620px, 100%);
-  margin: 38px auto 0;
+  width: min(560px, calc(100% - 48px));
+  margin: 0 auto;
   color: var(--muted);
   overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
 }
 
 .scSourceStrip > span {
@@ -493,6 +549,10 @@ h3 {
   background-size: contain;
 }
 
+.webSourceLogo {
+  background-image: url("/source-logos/web.svg");
+}
+
 .redditSourceLogo {
   background-image: url("/source-logos/reddit.svg");
 }
@@ -521,99 +581,6 @@ h3 {
   }
 }
 
-.blueShowcase {
-  position: relative;
-  display: grid;
-  min-height: 360px;
-  place-items: center;
-  overflow: hidden;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(5, 98, 239, 0.9),
-      rgba(1, 11, 28, 0.96) 28%,
-      rgba(1, 11, 28, 0.98) 70%,
-      rgba(5, 98, 239, 0.9)
-    ),
-    #031328;
-}
-
-.signalBeam {
-  position: absolute;
-  inset: 0;
-  filter: saturate(1.3);
-}
-
-.signalBeam span {
-  position: absolute;
-  width: 52vw;
-  height: 270px;
-  border-radius: 50%;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(31, 199, 255, 0.92) 0,
-    rgba(31, 199, 255, 0.92) 2px,
-    transparent 2px,
-    transparent 9px
-  );
-  opacity: 0.46;
-  transform: rotate(-12deg);
-}
-
-.signalBeam span:nth-child(1) {
-  left: 3%;
-  top: 30px;
-}
-
-.signalBeam span:nth-child(2) {
-  right: 0;
-  bottom: 18px;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(78, 82, 255, 0.92) 0,
-    rgba(78, 82, 255, 0.92) 2px,
-    transparent 2px,
-    transparent 9px
-  );
-}
-
-.signalBeam span:nth-child(3) {
-  left: 31%;
-  top: 90px;
-  width: 38vw;
-  height: 180px;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(255, 255, 255, 0.45) 0,
-    rgba(255, 255, 255, 0.45) 1px,
-    transparent 1px,
-    transparent 8px
-  );
-  opacity: 0.18;
-}
-
-.showcaseMark {
-  z-index: 1;
-  display: grid;
-  width: 86px;
-  height: 86px;
-  place-items: center;
-  color: #ffffff;
-  font-family:
-    var(--font-space-grotesk),
-    var(--font-dm-sans),
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  font-size: 1.25rem;
-  font-weight: 900;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-}
 
 .section,
 .pageHero {
@@ -1749,6 +1716,11 @@ h3 {
     padding: 16px 12px;
   }
 
+  .siteHeaderScrolled {
+    background: transparent;
+    backdrop-filter: none;
+  }
+
   .publicNav {
     order: 3;
     width: 100%;
@@ -1757,7 +1729,26 @@ h3 {
 
   .scHero {
     min-height: auto;
-    padding: 44px 16px 42px;
+    margin-top: 0;
+    padding: 54px 16px 48px;
+  }
+
+  .heroText {
+    margin-bottom: 30px;
+  }
+
+  .scSourceStrip {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: min(520px, 100%);
+    margin-top: 34px;
+  }
+
+  .scHeroCopy {
+    margin-top: 0;
+    transform: none;
   }
 
   .scHeroDotted::before,

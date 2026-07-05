@@ -29,7 +29,8 @@ export function PublicAuthControls() {
             Sign in
           </Link>
           <Link className="button primaryButton" href="/sign-up">
-            Start building
+            Start Free
+            <span className="buttonDivider" aria-hidden="true" />
             <ArrowRight aria-hidden="true" size={16} />
           </Link>
         </>
