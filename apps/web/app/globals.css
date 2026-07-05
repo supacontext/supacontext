@@ -641,7 +641,7 @@ h3 {
   display: block;
   margin-bottom: 26px;
   color: var(--muted);
-  font-family: var(--font-dm-mono), "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-dm-mono), SFMono-Regular, Consolas, monospace;
   font-size: 0.78rem;
   font-weight: 900;
 }
