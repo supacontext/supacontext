@@ -153,9 +153,9 @@ export default function ApiReferencePage() {
 
             <h2 id="env">Required environment groups</h2>
             <p>
-              Configure Clerk, Supabase Postgres, Creem product ids and webhook secret, Upstash Redis,
-              QStash signing keys, provider keys, an internal worker token, and a 32+ character API
-              key hash secret. See the
+              Configure WorkOS AuthKit, Supabase Postgres, Creem product ids and webhook secret,
+              Upstash Redis, QStash signing keys, provider keys, an internal worker token, and a
+              32+ character API key hash secret. See the
               repository README and <code>.env.example</code> for exact variable names.
             </p>
           </article>

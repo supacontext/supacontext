@@ -1,40 +1,37 @@
 "use client";
 
-import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, LogIn } from "lucide-react";
 import Link from "next/link";
+import { UserMenu } from "./user-menu";
 
 export function PublicAuthControls() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { loading, user } = useAuth();
 
-  if (!isLoaded) {
+  if (loading) {
     return <div className="authControls" aria-label="Loading authentication controls" />;
   }
 
   return (
     <div className="authControls">
-      {isSignedIn ? (
+      {user ? (
         <>
           <Link className="button primaryButton" href="/dashboard">
             Dashboard
             <ArrowRight aria-hidden="true" size={16} />
           </Link>
-          <UserButton />
+          <UserMenu />
         </>
       ) : (
         <>
-          <SignInButton mode="modal">
-            <button className="button secondaryButton" type="button">
-              <LogIn aria-hidden="true" size={16} />
-              Sign in
-            </button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button className="button primaryButton" type="button">
-              Start building
-              <ArrowRight aria-hidden="true" size={16} />
-            </button>
-          </SignUpButton>
+          <Link className="button secondaryButton" href="/sign-in">
+            <LogIn aria-hidden="true" size={16} />
+            Sign in
+          </Link>
+          <Link className="button primaryButton" href="/sign-up">
+            Start building
+            <ArrowRight aria-hidden="true" size={16} />
+          </Link>
         </>
       )}
     </div>

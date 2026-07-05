@@ -1,7 +1,6 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { auth, currentUser } from "@clerk/nextjs/server";
 import type { PaidPlanSlug } from "@supacontext/billing";
 import {
   CONTEXT_DEPTHS,
@@ -17,7 +16,8 @@ import {
 } from "@supacontext/core";
 import { createDatabaseClient, type ApiKeyRow, type DatabaseClient } from "@supacontext/db";
 import { authorizeUsage } from "@supacontext/usage";
-import { redirect } from "next/navigation";
+import { withAuth } from "@workos-inc/authkit-nextjs";
+import type { User } from "@workos-inc/node";
 import { parseApiKeyForm } from "../api-key-form";
 import { createCreemCheckout, createCreemPortal } from "./billing";
 
@@ -26,7 +26,7 @@ let database: DatabaseClient | undefined;
 export type WorkspaceContext = {
   profileId: string;
   workspaceId: string;
-  clerkUserId: string;
+  workosUserId: string;
   email: string | null;
   displayName: string | null;
 };
@@ -173,18 +173,14 @@ function isPlatform(value: unknown): value is Platform {
   return typeof value === "string" && PLATFORMS.includes(value as Platform);
 }
 
-function displayNameFromUser(user: Awaited<ReturnType<typeof currentUser>>): string | null {
-  if (!user) {
-    return null;
-  }
-
+function displayNameFromUser(user: User): string | null {
   const names = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
 
-  return names || user.username || user.fullName || null;
+  return names || null;
 }
 
-function emailFromUser(user: Awaited<ReturnType<typeof currentUser>>): string | null {
-  return user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses[0]?.emailAddress ?? null;
+function emailFromUser(user: User): string | null {
+  return user.email;
 }
 
 function mapApiKey(row: ApiKeySelectRow): DashboardApiKey {
@@ -309,7 +305,7 @@ function mapUsageRequest(row: UsageRequestRow): UsageRequest {
 }
 
 async function ensureWorkspaceForUser(input: {
-  clerkUserId: string;
+  workosUserId: string;
   email: string | null;
   displayName: string | null;
 }): Promise<WorkspaceContext> {
@@ -317,9 +313,9 @@ async function ensureWorkspaceForUser(input: {
 
   return sql.begin(async (transaction) => {
     const profileRows = await transaction<Array<{ id: string }>>`
-      insert into profiles (clerk_user_id, email, display_name)
-      values (${input.clerkUserId}, ${input.email}, ${input.displayName})
-      on conflict (clerk_user_id) do update
+      insert into profiles (workos_user_id, email, display_name)
+      values (${input.workosUserId}, ${input.email}, ${input.displayName})
+      on conflict (workos_user_id) do update
       set
         email = excluded.email,
         display_name = excluded.display_name
@@ -397,7 +393,7 @@ async function ensureWorkspaceForUser(input: {
     return {
       profileId,
       workspaceId,
-      clerkUserId: input.clerkUserId,
+      workosUserId: input.workosUserId,
       email: input.email,
       displayName: input.displayName,
     };
@@ -405,29 +401,27 @@ async function ensureWorkspaceForUser(input: {
 }
 
 export async function getWorkspaceContext(): Promise<WorkspaceContext | null> {
-  const session = await auth();
+  const { user } = await withAuth();
 
-  if (!session.userId) {
+  if (!user) {
     return null;
   }
 
-  const user = await currentUser();
-
   return ensureWorkspaceForUser({
-    clerkUserId: session.userId,
+    workosUserId: user.id,
     email: emailFromUser(user),
     displayName: displayNameFromUser(user),
   });
 }
 
 export async function requireWorkspaceContext(): Promise<WorkspaceContext> {
-  const context = await getWorkspaceContext();
+  const { user } = await withAuth({ ensureSignedIn: true });
 
-  if (!context) {
-    redirect("/sign-in");
-  }
-
-  return context;
+  return ensureWorkspaceForUser({
+    workosUserId: user.id,
+    email: emailFromUser(user),
+    displayName: displayNameFromUser(user),
+  });
 }
 
 export async function getPlanState(workspaceId: string): Promise<DashboardPlanState> {

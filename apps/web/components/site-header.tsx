@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthProvider } from "./auth-provider";
 import { PublicAuthControls } from "./auth-controls";
 
 const publicLinks = [
@@ -21,7 +22,9 @@ export function SiteHeader() {
           </Link>
         ))}
       </nav>
-      <PublicAuthControls />
+      <AuthProvider>
+        <PublicAuthControls />
+      </AuthProvider>
     </header>
   );
 }

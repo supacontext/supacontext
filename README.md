@@ -96,12 +96,20 @@ Shared:
 - `DATABASE_URL`
 - `API_KEY_HASH_SECRET` at least 32 characters
 
-Web and Clerk:
+Web and WorkOS AuthKit:
 
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
+- `WORKOS_CLIENT_ID`
+- `WORKOS_API_KEY`
+- `WORKOS_COOKIE_PASSWORD` at least 32 characters
+- `NEXT_PUBLIC_WORKOS_REDIRECT_URI` for example `http://localhost:3000/callback`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
+
+Configure the WorkOS dashboard Redirects settings for each environment:
+
+- Redirect URI: `<APP_URL>/callback`
+- Sign-in endpoint: `<APP_URL>/sign-in`
+- Sign-out redirect: `<APP_URL>`
 
 API:
 
@@ -228,7 +236,7 @@ Set health checks to:
 
 Set env vars separately per Railway service:
 
-- Web: shared web URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Clerk, Supabase anon URL/key, and Creem billing vars.
+- Web: shared web URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, WorkOS AuthKit, Supabase anon URL/key, and Creem billing vars.
 - API: shared API URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Supabase anon/service keys, Upstash Redis, and QStash token.
 - Worker: shared worker URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Supabase anon/service keys, QStash signing keys, and provider API keys.
 
