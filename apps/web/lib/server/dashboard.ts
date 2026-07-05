@@ -18,8 +18,10 @@ import { createDatabaseClient, type ApiKeyRow, type DatabaseClient } from "@supa
 import { authorizeUsage } from "@supacontext/usage";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import type { User } from "@workos-inc/node";
+import { redirect } from "next/navigation";
 import { parseApiKeyForm } from "../api-key-form";
 import { createCreemCheckout, createCreemPortal } from "./billing";
+import { webEnv } from "./env";
 
 let database: DatabaseClient | undefined;
 
@@ -129,7 +131,7 @@ function getDatabase(): DatabaseClient {
     return database;
   }
 
-  const url = process.env.DATABASE_URL;
+  const url = webEnv.DATABASE_URL;
 
   if (!url) {
     throw new DashboardError(500, "DATABASE_NOT_CONFIGURED", "DATABASE_URL is not configured.");
@@ -144,7 +146,7 @@ function getDatabase(): DatabaseClient {
 }
 
 function getApiKeyHashSecret(): string {
-  const secret = process.env.API_KEY_HASH_SECRET;
+  const secret = webEnv.API_KEY_HASH_SECRET;
 
   if (!secret || secret.length < 32) {
     throw new DashboardError(
@@ -224,7 +226,7 @@ function createContextRequestId(): string {
 }
 
 function getWorkerUrl(): string {
-  const workerUrl = process.env.WORKER_URL;
+  const workerUrl = webEnv.WORKER_URL;
 
   if (!workerUrl) {
     throw new DashboardError(500, "WORKER_NOT_CONFIGURED", "WORKER_URL is not configured.");
@@ -234,9 +236,9 @@ function getWorkerUrl(): string {
 }
 
 async function runWorkerContextJob(requestId: string): Promise<void> {
-  const internalToken = process.env.WORKER_INTERNAL_TOKEN;
+  const internalToken = webEnv.WORKER_INTERNAL_TOKEN;
 
-  if (process.env.NODE_ENV === "production" && !internalToken) {
+  if (webEnv.NODE_ENV === "production" && !internalToken) {
     throw new DashboardError(
       500,
       "WORKER_NOT_CONFIGURED",
@@ -415,13 +417,13 @@ export async function getWorkspaceContext(): Promise<WorkspaceContext | null> {
 }
 
 export async function requireWorkspaceContext(): Promise<WorkspaceContext> {
-  const { user } = await withAuth({ ensureSignedIn: true });
+  const workspace = await getWorkspaceContext();
 
-  return ensureWorkspaceForUser({
-    workosUserId: user.id,
-    email: emailFromUser(user),
-    displayName: displayNameFromUser(user),
-  });
+  if (!workspace) {
+    redirect("/sign-in");
+  }
+
+  return workspace;
 }
 
 export async function getPlanState(workspaceId: string): Promise<DashboardPlanState> {

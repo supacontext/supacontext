@@ -2,6 +2,7 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import type { Metadata } from "next";
 import { DM_Mono, DM_Sans, Space_Grotesk } from "next/font/google";
 import { AuthProvider } from "../components/auth-provider";
+import "../lib/server/env";
 import "./globals.css";
 
 const dmSans = DM_Sans({
