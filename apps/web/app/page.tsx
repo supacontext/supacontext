@@ -12,6 +12,7 @@ const sourceLogos = [
 const sourceMarqueeItems = Array.from({ length: 3 }, (_, repeat) =>
   sourceLogos.map((source) => ({ ...source, key: `${repeat}-${source.name}` })),
 ).flat();
+const accessibleSourceNames = Array.from(new Set(sourceMarqueeItems.map((source) => source.name)));
 const heroBenefits = [
   {
     title: "Unified Access",
@@ -63,6 +64,11 @@ export default function HomePage() {
           </div>
           <div className="scSourceStrip" aria-label="Sources SupaContext scans">
             <span>One endpoint across</span>
+            <ul className="scSourceAccessibleList">
+              {accessibleSourceNames.map((sourceName) => (
+                <li key={sourceName}>{sourceName}</li>
+              ))}
+            </ul>
             <div className="scSourceMarquee">
               <div className="scSourceTrack" aria-hidden="true">
                 {[0, 1].map((group) => (
