@@ -45,9 +45,11 @@ const supabaseSchema = {
   SUPABASE_SERVICE_ROLE_KEY: requiredString,
 };
 
-const clerkSchema = {
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: requiredString,
-  CLERK_SECRET_KEY: requiredString,
+const workosSchema = {
+  WORKOS_CLIENT_ID: requiredString,
+  WORKOS_API_KEY: requiredString,
+  WORKOS_COOKIE_PASSWORD: requiredString.min(32, "must be at least 32 characters"),
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: requiredUrl,
 };
 
 const creemSchema = {
@@ -102,7 +104,7 @@ export const webEnvSchema = z.object({
   WORKER_INTERNAL_TOKEN: optionalString,
   DATABASE_URL: requiredString,
   API_KEY_HASH_SECRET: requiredString.min(32, "must be at least 32 characters"),
-  ...clerkSchema,
+  ...workosSchema,
   ...creemSchema,
   SUPABASE_URL: requiredUrl,
   SUPABASE_ANON_KEY: requiredString,

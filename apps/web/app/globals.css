@@ -1212,10 +1212,55 @@ h3 {
   gap: 8px;
 }
 
-.authPage {
+.notFoundPage {
   display: grid;
   min-height: 100vh;
+  place-content: center;
+  justify-items: start;
+  padding: 40px 0;
+}
+
+.notFoundPage h1 {
+  max-width: 720px;
+  font-size: clamp(2.8rem, 6vw, 5.4rem);
+}
+
+.userMenu,
+.userMenuSkeleton {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+}
+
+.userMenu {
+  gap: 9px;
+}
+
+.userMenuSkeleton {
+  width: 40px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.userAvatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
   place-items: center;
+  color: #ffffff;
+  background: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.userEmail {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .appFrame {

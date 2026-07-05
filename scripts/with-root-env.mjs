@@ -53,6 +53,10 @@ if (existsSync(envPath)) {
   }
 }
 
+if (command === "next" && args[0] === "build") {
+  process.env.NODE_ENV = "production";
+}
+
 function resolveCommand(input, inputArgs) {
   if (input === "node") {
     return {

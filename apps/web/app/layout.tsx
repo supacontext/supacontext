@@ -1,6 +1,8 @@
+import { withAuth } from "@workos-inc/authkit-nextjs";
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { DM_Mono, DM_Sans, Space_Grotesk } from "next/font/google";
+import { AuthProvider } from "../components/auth-provider";
+import "../lib/server/env";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -24,18 +26,18 @@ export const metadata: Metadata = {
   description: "Compact, cited public context for AI agents.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { accessToken: _accessToken, ...initialAuth } = await withAuth();
+
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body className={`${dmSans.variable} ${spaceGrotesk.variable} ${dmMono.variable}`}>
-          {children}
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en">
+      <body className={`${dmSans.variable} ${spaceGrotesk.variable} ${dmMono.variable}`}>
+        <AuthProvider initialAuth={initialAuth}>{children}</AuthProvider>
+      </body>
+    </html>
   );
 }

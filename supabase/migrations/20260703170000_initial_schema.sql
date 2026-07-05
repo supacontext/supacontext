@@ -20,7 +20,7 @@ $$;
 
 create table public.profiles (
   id uuid primary key default gen_random_uuid(),
-  clerk_user_id text not null unique,
+  workos_user_id text not null unique,
   email text,
   display_name text,
   created_at timestamptz not null default now(),

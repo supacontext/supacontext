@@ -12,13 +12,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.5.12",
     "@supacontext/billing": "workspace:*",
     "@supacontext/config": "workspace:*",
     "@supacontext/core": "workspace:*",
     "@supacontext/db": "workspace:*",
     "@supacontext/ui": "workspace:*",
     "@supacontext/usage": "workspace:*",
+    "@workos-inc/authkit-nextjs": "^4.2.0",
+    "@workos-inc/node": "^10.7.0",
     "lucide-react": "^1.23.0",
     "next": "^16.2.10",
     "postgres": "^3.4.7",

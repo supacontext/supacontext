@@ -1,19 +1,16 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { authkitProxy } from "@workos-inc/authkit-nextjs";
 
-const isProtectedRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/playground(.*)",
-  "/keys(.*)",
-  "/usage(.*)",
-  "/billing(.*)",
-]);
+const configuredRedirectUri = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
+const appUrl = process.env.APP_URL;
+const redirectUri = configuredRedirectUri || (appUrl ? new URL("/callback", appUrl).toString() : undefined);
 
-export default clerkMiddleware(async (auth, request) => {
-  if (isProtectedRoute(request)) {
-    await auth.protect({
-      unauthenticatedUrl: new URL("/sign-in", request.url).toString(),
-    });
-  }
+if (!redirectUri) {
+  throw new Error("Set NEXT_PUBLIC_WORKOS_REDIRECT_URI or APP_URL for WorkOS AuthKit.");
+}
+
+export default authkitProxy({
+  redirectUri,
+  signUpPaths: ["/sign-up"],
 });
 
 export const config = {

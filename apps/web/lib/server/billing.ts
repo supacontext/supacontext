@@ -12,6 +12,7 @@ import {
 } from "@supacontext/billing";
 import { createDatabaseClient, type DatabaseClient } from "@supacontext/db";
 import type postgres from "postgres";
+import { webEnv } from "./env";
 
 let database: DatabaseClient | undefined;
 
@@ -27,12 +28,8 @@ function getDatabase(): DatabaseClient {
     return database;
   }
 
-  if (!process.env.DATABASE_URL) {
-    throw new BillingConfigurationError("DATABASE_URL is not configured.");
-  }
-
   database = createDatabaseClient({
-    url: process.env.DATABASE_URL,
+    url: webEnv.DATABASE_URL,
     maxConnections: 3,
   });
 
@@ -40,15 +37,15 @@ function getDatabase(): DatabaseClient {
 }
 
 function getAppUrl(): string {
-  return process.env.APP_URL ?? "http://localhost:3000";
+  return webEnv.APP_URL;
 }
 
 function getCreemClient(): CreemBillingClient {
   return new CreemBillingClient({
-    apiKey: process.env.CREEM_API_KEY ?? "",
-    webhookSecret: process.env.CREEM_WEBHOOK_SECRET ?? "",
-    productIds: readCreemProductIds(process.env),
-    testMode: process.env.NODE_ENV !== "production",
+    apiKey: webEnv.CREEM_API_KEY,
+    webhookSecret: webEnv.CREEM_WEBHOOK_SECRET,
+    productIds: readCreemProductIds(webEnv),
+    testMode: webEnv.NODE_ENV !== "production",
   });
 }
 
