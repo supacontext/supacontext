@@ -188,50 +188,11 @@ h3 {
 }
 
 .brandMark {
-  position: relative;
-  width: 22px;
-  height: 22px;
+  display: block;
+  width: 23px;
+  height: 23px;
   flex: 0 0 auto;
-}
-
-.brandMark::before,
-.brandMark::after {
-  position: absolute;
-  content: "";
-  background: var(--ink);
-}
-
-.brandMark::before {
-  top: 9px;
-  left: 0;
-  width: 22px;
-  height: 4px;
-  box-shadow: 0 -8px 0 -1px var(--ink);
-  transform: rotate(45deg);
-}
-
-.brandMark::after {
-  top: 0;
-  left: 9px;
-  width: 4px;
-  height: 22px;
-  box-shadow: 8px 0 0 -1px var(--ink);
-  transform: rotate(45deg);
-}
-
-.largeMark {
-  width: 30px;
-  height: 30px;
-}
-
-.largeMark::before {
-  top: 13px;
-  width: 30px;
-}
-
-.largeMark::after {
-  left: 13px;
-  height: 30px;
+  margin-top: -1px;
 }
 
 .publicNav,
@@ -356,7 +317,12 @@ h3 {
   margin-top: calc(-1 * var(--site-header-height));
   padding: 118px 24px 76px;
   background:
-    linear-gradient(180deg, rgba(250, 250, 250, 0.08) 0%, rgba(250, 250, 250, 0.2) 44%, rgba(250, 250, 250, 0.46) 100%),
+    linear-gradient(
+      180deg,
+      rgba(250, 250, 250, 0.08) 0%,
+      rgba(250, 250, 250, 0.2) 44%,
+      rgba(250, 250, 250, 0.46) 100%
+    ),
     url("/images/supacontext-hero.avif") center bottom / cover no-repeat;
   text-align: center;
 }
@@ -688,7 +654,6 @@ h3 {
     border-right: 1px solid var(--line);
   }
 }
-
 
 .section,
 .pageHero {

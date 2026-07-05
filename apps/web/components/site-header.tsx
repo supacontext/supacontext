@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PublicAuthControls } from "./auth-controls";
+import { LogoMark } from "./icons";
 
 const publicLinks = [
   { href: "/docs", label: "Docs" },
@@ -35,7 +36,7 @@ export function SiteHeader() {
       <div ref={sentinelRef} className="siteHeaderSentinel" aria-hidden="true" />
       <header className={`siteHeader${isScrolled ? " siteHeaderScrolled" : ""}`}>
         <Link className="brand" href="/">
-          <span className="brandMark" aria-hidden="true" />
+          <LogoMark className="brandMark" />
           <span>SupaContext</span>
         </Link>
         <nav className="publicNav" aria-label="Main navigation">
