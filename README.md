@@ -1,8 +1,8 @@
-# SupaContext
+# Supacontext
 
 Developer API for giving AI agents compact, cited, up-to-date public context from web, Reddit, X, and YouTube.
 
-SupaContext is not a raw search API, scraper, or provider-output passthrough. Public responses are JSON-only compiled context with citations, gaps, and usage metadata.
+Supacontext is not a raw search API, scraper, or provider-output passthrough. Public responses are JSON-only compiled context with citations, gaps, and usage metadata.
 
 ## Services
 

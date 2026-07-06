@@ -1,4 +1,4 @@
-# SupaContext
+# Supacontext
 
 Developer API for giving AI agents compact, cited, up-to-date public context from web, Reddit, X, and YouTube.
 

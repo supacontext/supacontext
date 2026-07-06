@@ -565,7 +565,7 @@ describe("context API routes", () => {
       url: "/v1/context",
       headers: authHeaders(),
       payload: {
-        query: "SupaContext competitors",
+        query: "Supacontext competitors",
         platforms: ["web", "reddit"],
       },
     });
@@ -574,7 +574,7 @@ describe("context API routes", () => {
     expect(response.statusCode).toBe(200);
     expect(body).toMatchObject({
       status: "completed",
-      query: "SupaContext competitors",
+      query: "Supacontext competitors",
       depth: "standard",
       usage: {
         credits_charged: 20,
@@ -593,7 +593,7 @@ describe("context API routes", () => {
   it("does not expose internal failure messages in public responses", () => {
     const response = toPublicContextResponse({
       id: "ctx_failed",
-      query: "SupaContext",
+      query: "Supacontext",
       depth: "standard",
       platforms: ["web"],
       status: "failed",
@@ -621,7 +621,7 @@ describe("context API routes", () => {
         "idempotency-key": "idem_1",
       }),
       payload: {
-        query: "SupaContext pricing",
+        query: "Supacontext pricing",
         depth: "fast",
       },
     } as const;
@@ -655,7 +655,7 @@ describe("context API routes", () => {
       url: "/v1/context",
       headers,
       payload: {
-        query: "SupaContext pricing",
+        query: "Supacontext pricing",
         depth: "fast",
       },
     });

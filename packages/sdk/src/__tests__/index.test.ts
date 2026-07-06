@@ -10,7 +10,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("SupaContext SDK", () => {
+describe("Supacontext SDK", () => {
   it("creates context requests with auth and idempotency headers", async () => {
     const calls: Request[] = [];
     const client = new SupaContext({

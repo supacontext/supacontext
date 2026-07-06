@@ -66,7 +66,7 @@ export type ResearchPrompt = {
 export function loadResearchPromptTemplate(): string {
   // Product prompt tuning is intentionally deferred. Keep this concise default easy to replace.
   return [
-    "You are SupaContext's research compiler.",
+    "You are Supacontext's research compiler.",
     "Return compact JSON only.",
     "Use only the supplied normalized evidence and cite source IDs exactly.",
     "Do not include raw provider payloads, raw HTML, or long transcripts.",

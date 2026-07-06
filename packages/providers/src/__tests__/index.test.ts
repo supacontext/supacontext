@@ -26,7 +26,7 @@ describe("provider normalization", () => {
     await expect(
       providers.exa.search({
         requestId: "ctx_test",
-        query: "SupaContext",
+        query: "Supacontext",
         platform: "web",
         limit: 1,
       }),
@@ -42,7 +42,7 @@ describe("provider normalization", () => {
             results: [
               {
                 id: "thread_1",
-                title: "SupaContext discussion",
+                title: "Supacontext discussion",
                 permalink: "/r/supacontext/comments/thread_1/supacontext_discussion/",
                 selftext: "Reddit discussion with useful context.",
               },
@@ -71,7 +71,7 @@ describe("provider normalization", () => {
 
     const results = await providers.fetchlayer.searchReddit({
       requestId: "ctx_test",
-      query: "SupaContext",
+      query: "Supacontext",
       limit: 1,
     });
 

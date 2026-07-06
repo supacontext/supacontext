@@ -91,7 +91,7 @@ export class SupaContext {
 
   constructor(options: SupaContextClientOptions) {
     if (!options.apiKey) {
-      throw new Error("SupaContext API key is required.");
+      throw new Error("Supacontext API key is required.");
     }
 
     this.apiKey = options.apiKey;
@@ -133,7 +133,7 @@ export class SupaContext {
     if (!response.ok) {
       const body = data as ErrorBody;
       const code = body.error?.code ?? "internal_error";
-      const message = body.error?.message ?? `SupaContext request failed with status ${response.status}.`;
+      const message = body.error?.message ?? `Supacontext request failed with status ${response.status}.`;
 
       throw new SupaContextError(response.status, code, message, body.error?.details);
     }

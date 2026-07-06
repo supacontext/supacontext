@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="sidebar">
         <Link className="brand appBrand" href="/dashboard">
           <LogoMark className="brandMark" />
-          SupaContext
+          Supacontext
         </Link>
         <nav className="appNav" aria-label="Dashboard navigation">
           {appLinks.map((link) => {

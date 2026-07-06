@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { ComparisonSection } from "../components/comparison-section";
 import { CopyCommand } from "../components/copy-command";
 import { SiteHeader } from "../components/site-header";
 
@@ -62,7 +63,7 @@ export default function HomePage() {
             </div>
             <CopyCommand />
           </div>
-          <div className="scSourceStrip" aria-label="Sources SupaContext scans">
+          <div className="scSourceStrip" aria-label="Sources Supacontext scans">
             <span>One endpoint across</span>
             <ul className="scSourceAccessibleList">
               {accessibleSourceNames.map((sourceName) => (
@@ -86,7 +87,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="scBenefitStrip" aria-label="SupaContext benefits">
+        <section className="scBenefitStrip" aria-label="Supacontext benefits">
           {heroBenefits.map((benefit, index) => (
             <article className="scBenefitCard" key={benefit.title}>
               <span className="scBenefitNumber">/{String(index + 1).padStart(2, "0")}</span>
@@ -95,6 +96,8 @@ export default function HomePage() {
             </article>
           ))}
         </section>
+
+        <ComparisonSection />
       </main>
     </>
   );

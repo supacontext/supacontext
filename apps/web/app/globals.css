@@ -1949,3 +1949,154 @@ h3 {
     font-size: 2.55rem;
   }
 }
+
+/* Comparison Section */
+.comparisonSection {
+  padding: 92px 0;
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+.comparisonSplit {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 56px;
+  align-items: center;
+}
+
+.comparisonCopy {
+  max-width: 440px;
+}
+
+.comparisonHeading {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: clamp(2.4rem, 4vw, 3.8rem);
+  font-weight: 700;
+  margin-bottom: 20px;
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+}
+
+.comparisonCardWrapper {
+  position: relative;
+}
+
+.comparisonCard {
+  display: flex;
+  align-items: stretch;
+}
+
+.comparisonHalf {
+  flex: 1;
+  padding: 48px 36px;
+}
+
+.rivalHalf {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-right: none;
+}
+
+.solutionHalf {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(245, 250, 255, 0.62) 100%),
+    url("/images/comparison-card-background.avif") center / cover no-repeat;
+  border: 1px solid rgba(5, 98, 239, 0.58);
+  box-shadow: var(--shadow);
+  z-index: 2;
+  position: relative;
+  margin: 0;
+  padding: 48px 36px;
+}
+
+.comparisonHalfEyebrow {
+  display: block;
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.solutionEyebrow {
+  color: var(--primary);
+}
+
+.comparisonHalfTitle {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.12;
+  margin: 0 0 36px;
+  color: var(--ink);
+}
+
+.solutionTitle {
+  color: var(--primary);
+}
+
+.comparisonList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 18px;
+}
+
+.comparisonList li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  font-size: 0.96rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.comparisonList li span {
+  display: block;
+}
+
+.comparisonList li strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.rivalList svg {
+  color: var(--red);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.solutionList svg {
+  color: var(--primary);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+@media (min-width: 901px) {
+  .comparisonList li {
+    min-height: 64px;
+  }
+}
+
+@media (max-width: 900px) {
+  .comparisonSplit {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .comparisonCard {
+    flex-direction: column;
+  }
+  .rivalHalf {
+    border-right: 1px solid var(--line);
+    border-bottom: none;
+  }
+  .solutionHalf {
+    padding: 48px 36px;
+  }
+}

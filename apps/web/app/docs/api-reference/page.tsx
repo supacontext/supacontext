@@ -81,7 +81,7 @@ export default function ApiReferencePage() {
               workspace, can set a monthly credit limit, and can cap max depth.
             </p>
             <p>
-              Store keys server-side only. Do not put SupaContext keys in browser bundles, public
+              Store keys server-side only. Do not put Supacontext keys in browser bundles, public
               mobile clients, logs, analytics events, or support screenshots.
             </p>
 

@@ -4,7 +4,7 @@ import { contextRequestInputSchema, validateWebhookUrl } from "../validation.js"
 describe("context request validation", () => {
   it("trims and validates webhook URLs", async () => {
     const parsed = await contextRequestInputSchema.parseAsync({
-      query: "SupaContext",
+      query: "Supacontext",
       webhook_url: " https://8.8.8.8/webhook ",
     });
 
@@ -41,7 +41,7 @@ describe("context request validation", () => {
   it("limits metadata size", () => {
     expect(
       contextRequestInputSchema.safeParse({
-        query: "SupaContext",
+        query: "Supacontext",
         metadata: Object.fromEntries(
           Array.from({ length: 51 }, (_, index) => [`key_${index}`, true]),
         ),
@@ -50,7 +50,7 @@ describe("context request validation", () => {
 
     expect(
       contextRequestInputSchema.safeParse({
-        query: "SupaContext",
+        query: "Supacontext",
         metadata: {
           oversized: "x".repeat(4097),
         },

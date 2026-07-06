@@ -106,7 +106,7 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
   }));
 
   server.get("/v1/meta", async () => ({
-    product: "SupaContext",
+    product: "Supacontext",
     depths: {
       ...DEPTH_CREDIT_COST,
     },
