@@ -2224,3 +2224,58 @@ h3 {
 .hiwCardList li {
   padding-left: 4px;
 }
+
+/* Founder Quote Section */
+.scFounderQuote {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 120px 24px;
+  background: url("/images/quote-background.avif?v=5") center / cover no-repeat;
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
+
+.scFounderQuoteContent {
+  position: relative;
+  z-index: 1;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.scFounderQuote blockquote {
+  margin: 0;
+  padding: 0;
+}
+
+.scFounderQuote blockquote p {
+  font-family: var(--font-space-grotesk), var(--font-dm-sans), sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 40px;
+  letter-spacing: -0.02em;
+}
+
+.scFounderQuoteAuthor {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  border: 2px solid var(--ink);
+  font-family: var(--font-dm-mono), "SFMono-Regular", monospace;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scFounderQuoteLine {
+  display: block;
+  width: 24px;
+  height: 2px;
+  background-color: var(--ink);
+}
