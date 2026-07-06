@@ -5,7 +5,7 @@ export function ComparisonSection() {
     <section className="section comparisonSection" aria-label="Supacontext vs Traditional Providers">
       <div className="comparisonSplit">
         <div className="comparisonCopy">
-          <h2 className="comparisonHeading">The old way is broken.</h2>
+          <h2 className="comparisonHeading">The old way is broken</h2>
           <p className="mutedText">
             Agents need clean context from the sources people actually use, not separate APIs and noisy payloads.
           </p>

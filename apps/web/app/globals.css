@@ -1971,7 +1971,7 @@ h3 {
 .comparisonHeading {
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: clamp(2.4rem, 4vw, 3.8rem);
-  font-weight: 700;
+  font-weight: 560;
   margin-bottom: 20px;
   line-height: 0.98;
   letter-spacing: -0.02em;
@@ -2099,4 +2099,128 @@ h3 {
   .solutionHalf {
     padding: 48px 36px;
   }
+}
+
+/* How It Works Section */
+.hiwSection {
+  padding: 120px 0;
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+.hiwHeader {
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+.hiwHeader h2 {
+  font-family: var(--font-space-grotesk), var(--font-dm-sans), sans-serif;
+  font-size: clamp(2rem, 3.7vw, 3.7rem);
+  font-weight: 560;
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.hiwHeader p {
+  color: var(--muted);
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
+  line-height: 1.6;
+  max-width: 680px;
+  margin: 18px auto 0;
+}
+
+.hiwGrid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 24px;
+}
+
+@media (min-width: 821px) {
+  .hiwGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+  }
+}
+
+.hiwCard {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+
+.hiwCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-soft);
+  border-color: var(--line-strong);
+}
+
+.hiwCardTop {
+  padding: 24px 28px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  background-image: url("/images/how-it-works-card-bg.avif?v=4");
+  background-size: cover;
+  background-position: center;
+}
+
+.hiwCardNumber {
+  color: var(--primary);
+  font-family: var(--font-dm-sans), sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hiwCardStepLabel {
+  color: var(--ink);
+  font-family: var(--font-dm-mono), "SFMono-Regular", monospace;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.hiwCardBottom {
+  padding: 24px 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-grow: 1;
+}
+
+.hiwCardTitle {
+  color: var(--ink);
+  font-family: var(--font-space-grotesk), var(--font-dm-sans), sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.hiwCardText {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.hiwCardList {
+  margin: 0;
+  padding: 0 0 0 20px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hiwCardList li {
+  padding-left: 4px;
 }

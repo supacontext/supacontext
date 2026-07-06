@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { ComparisonSection } from "../components/comparison-section";
 import { CopyCommand } from "../components/copy-command";
+import { HowItWorksSection } from "../components/how-it-works-section";
 import { SiteHeader } from "../components/site-header";
 
 const sourceLogos = [
@@ -98,6 +99,7 @@ export default function HomePage() {
         </section>
 
         <ComparisonSection />
+        <HowItWorksSection />
       </main>
     </>
   );
