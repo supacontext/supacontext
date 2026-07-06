@@ -7,25 +7,25 @@ import { ArrowRight } from "lucide-react";
 const agents = [
   {
     id: "coding",
-    title: "Coding agent",
+    title: "Coding agents",
     description:
       "Pull current docs, release notes, GitHub issues, and developer threads before the agent writes code or fixes a bug.",
   },
   {
     id: "research",
-    title: "Research agent",
+    title: "Research agents",
     description:
       "Collect cited signals from the web, Reddit, X, and YouTube so the agent can compare sources and hand off a clean brief.",
   },
   {
     id: "content",
-    title: "Content agent",
+    title: "Content agents",
     description:
       "Find what your audience asks, watches, and debates, then give the agent cited inputs for timely content.",
   },
   {
     id: "sales",
-    title: "Sales agent",
+    title: "Sales agents",
     description:
       "Gather account news, buyer pain points, competitor mentions, and market signals before the agent writes outreach.",
   },
@@ -72,8 +72,8 @@ export function WorkflowsSection() {
         <div className="workflowsCopy">
           <h2 className="workflowsHeading">Context for real agent workflows</h2>
           <p className="mutedText">
-            Give agents one API for web, Reddit, X, and YouTube context, with compact JSON and
-            citations instead of raw search output.
+            Give agents one API for Web, Reddit, X, and YouTube context, gathered autonomously,
+            returned as JSON.
           </p>
           <div className="workflowsCTA">
             <Link className="button primaryButton" href="/dashboard">
