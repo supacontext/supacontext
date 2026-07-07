@@ -14,19 +14,19 @@ export function AgenticApiSection() {
         <div className="agenticMapNode agenticMapEdgeNode">
           <span>Your agent</span>
           <strong>Asks once</strong>
+          <p>One query, one endpoint</p>
         </div>
 
         <div className="agenticMapNode agenticMapCore">
           <span>Supacontext agent</span>
-          <strong>Searches, compares, compresses</strong>
-          <div className="agenticSourceSummary">
-            <b>14+ sources available</b>
-          </div>
+          <strong>Searches and compares</strong>
+          <p>14+ public sources</p>
         </div>
 
         <div className="agenticMapNode agenticMapEdgeNode">
           <span>Returns</span>
           <strong>Cited JSON</strong>
+          <p>Compact context, ready to use</p>
         </div>
       </div>
 
@@ -37,6 +37,7 @@ export function AgenticApiSection() {
           </span>
         ))}
       </div>
+      <p className="agenticDepthCaption">Choose the depth level per request.</p>
     </section>
   );
 }
