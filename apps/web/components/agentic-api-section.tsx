@@ -37,7 +37,7 @@ export function AgenticApiSection() {
           </span>
         ))}
       </div>
-      <p className="agenticDepthCaption">Choose the depth level per request.</p>
+      <p className="agenticDepthCaption">Choose a depth level for each request.</p>
     </section>
   );
 }
