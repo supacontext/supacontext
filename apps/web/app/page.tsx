@@ -7,6 +7,7 @@ import { HowItWorksSection } from "../components/how-it-works-section";
 import { SiteHeader } from "../components/site-header";
 import { WorkflowsSection } from "../components/workflows-section";
 import { WorksWithSection } from "../components/works-with-section";
+import { PricingSection } from "../components/pricing-section";
 
 const sourceLogos = [
   { name: "Web", logoClass: "webSourceLogo" },
@@ -106,6 +107,7 @@ export default function HomePage() {
         <FounderQuoteSection />
         <WorkflowsSection />
         <WorksWithSection />
+        <PricingSection />
       </main>
     </>
   );
