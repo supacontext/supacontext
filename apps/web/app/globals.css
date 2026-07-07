@@ -504,7 +504,7 @@ h3 {
   z-index: 1;
   display: grid;
   gap: 14px;
-  width: min(560px, calc(100% - 48px));
+  width: min(640px, calc(100% - 48px));
   margin: 0 auto;
   color: var(--muted);
   overflow: hidden;
@@ -538,7 +538,7 @@ h3 {
   display: flex;
   flex: 0 0 auto;
   min-width: max-content;
-  animation: sourceMarquee 32s linear infinite;
+  animation: sourceMarquee 112s linear infinite;
   will-change: transform;
 }
 
@@ -579,12 +579,52 @@ h3 {
   background-image: url("/source-logos/reddit.svg");
 }
 
+.instagramSourceLogo {
+  background-image: url("/source-logos/instagram.svg");
+}
+
 .xSourceLogo {
   background-image: url("/source-logos/x.svg");
 }
 
+.linkedinSourceLogo {
+  background-image: url("/source-logos/linkedin.svg");
+}
+
+.mapsSourceLogo {
+  background-image: url("/source-logos/maps.svg");
+}
+
+.tiktokSourceLogo {
+  background-image: url("/source-logos/tiktok.svg");
+}
+
+.facebookSourceLogo {
+  background-image: url("/source-logos/facebook.svg");
+}
+
+.hackerNewsSourceLogo {
+  background-image: url("/source-logos/hacker-news.svg");
+}
+
+.productHuntSourceLogo {
+  background-image: url("/source-logos/product-hunt.svg");
+}
+
 .youtubeSourceLogo {
   background-image: url("/source-logos/youtube.svg");
+}
+
+.githubSourceLogo {
+  background-image: url("/source-logos/github.svg");
+}
+
+.newsSourceLogo {
+  background-image: url("/source-logos/news.svg");
+}
+
+.forumsSourceLogo {
+  background-image: url("/source-logos/forums.svg");
 }
 
 @keyframes sourceMarquee {

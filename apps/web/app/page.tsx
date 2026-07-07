@@ -11,9 +11,19 @@ import { PricingSection } from "../components/pricing-section";
 
 const sourceLogos = [
   { name: "Web", logoClass: "webSourceLogo" },
+  { name: "Instagram", logoClass: "instagramSourceLogo" },
   { name: "Reddit", logoClass: "redditSourceLogo" },
+  { name: "LinkedIn", logoClass: "linkedinSourceLogo" },
+  { name: "Maps", logoClass: "mapsSourceLogo" },
+  { name: "TikTok", logoClass: "tiktokSourceLogo" },
   { name: "X / Twitter", logoClass: "xSourceLogo" },
+  { name: "News", logoClass: "newsSourceLogo" },
+  { name: "Hacker News", logoClass: "hackerNewsSourceLogo" },
+  { name: "Product Hunt", logoClass: "productHuntSourceLogo" },
   { name: "YouTube", logoClass: "youtubeSourceLogo" },
+  { name: "Forums", logoClass: "forumsSourceLogo" },
+  { name: "Facebook", logoClass: "facebookSourceLogo" },
+  { name: "GitHub", logoClass: "githubSourceLogo" },
 ];
 const sourceMarqueeItems = Array.from({ length: 3 }, (_, repeat) =>
   sourceLogos.map((source) => ({ ...source, key: `${repeat}-${source.name}` })),
@@ -22,7 +32,7 @@ const accessibleSourceNames = Array.from(new Set(sourceMarqueeItems.map((source)
 const heroBenefits = [
   {
     title: "Unified Access",
-    text: "Web, Reddit, X, and YouTube through one endpoint. No connector sprawl.",
+    text: "Web, social, communities, news, forums, and video through one endpoint. No connector sprawl.",
   },
   {
     title: "Less Token Waste",
@@ -53,8 +63,8 @@ export default function HomePage() {
               <span className="heroHeadingAccent">.</span>
             </h1>
             <p className="heroText">
-              Supacontext replaces separate Web, Reddit, X, and YouTube integrations with one
-              endpoint that returns compact, cited JSON for AI agents.
+              Supacontext replaces separate source integrations with one endpoint that returns
+              compact, cited JSON for AI agents.
             </p>
             <div className="heroActions">
               <Link className="button primaryButton" href="/dashboard">
