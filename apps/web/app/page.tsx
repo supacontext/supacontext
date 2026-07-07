@@ -9,6 +9,8 @@ import { SiteHeader } from "../components/site-header";
 import { WorkflowsSection } from "../components/workflows-section";
 import { WorksWithSection } from "../components/works-with-section";
 import { PricingSection } from "../components/pricing-section";
+import { SourcesSection } from "../components/sources-section";
+
 
 const sourceLogos = [
   { name: "Web", logoClass: "webSourceLogo" },
@@ -117,6 +119,7 @@ export default function HomePage() {
         <HowItWorksSection />
         <AgenticApiSection />
         <FounderQuoteSection />
+        <SourcesSection />
         <WorkflowsSection />
         <WorksWithSection />
         <PricingSection />

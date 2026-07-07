@@ -2493,6 +2493,235 @@ h3 {
   background-color: var(--ink);
 }
 
+/* Sources Section */
+.scSourcesSection {
+  padding: 80px 0;
+  border-top: 1px solid var(--line);
+}
+
+.scSourcesSection h2 {
+  font-weight: 560;
+}
+
+.scSourcesSub {
+  max-width: 600px;
+  margin: 14px auto 0;
+  font-size: 0.94rem;
+}
+
+.scSourcesGrid {
+  display: grid;
+  background: transparent;
+  margin-top: 36px;
+  border-radius: 0;
+}
+
+.scSourceCard {
+  position: relative;
+  background: transparent;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.scSourceCardComingSoon {
+  cursor: default;
+}
+
+.scSourceCardComingSoon .scSourceCardIconFrame,
+.scSourceCardComingSoon .scSourceCardTitle {
+  opacity: 0.35;
+  transition: opacity 200ms ease;
+}
+
+.scSourceCardComingSoon:hover .scSourceCardIconFrame,
+.scSourceCardComingSoon:hover .scSourceCardTitle {
+  opacity: 0.65;
+}
+
+.scComingSoonTooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -4px);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
+  z-index: 10;
+  border-radius: 0;
+  box-shadow: 0 4px 10px rgba(7, 17, 31, 0.15);
+}
+
+.scComingSoonTooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: var(--ink) transparent transparent transparent;
+}
+
+.scSourceCardComingSoon:hover .scComingSoonTooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -8px);
+}
+
+.scRequestTooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -4px);
+  background: var(--primary);
+  color: #ffffff;
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
+  z-index: 10;
+  border-radius: 0;
+  box-shadow: 0 4px 10px rgba(5, 98, 239, 0.15);
+}
+
+.scRequestTooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: var(--primary) transparent transparent transparent;
+}
+
+.scSourceCardRequest {
+  cursor: pointer;
+}
+
+.scSourceCardRequest:hover .scRequestTooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -8px);
+}
+
+.scSourceCardIconFrame {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.scSourceCardIcon {
+  display: block;
+  object-fit: contain;
+  width: 24px;
+  height: 24px;
+  transition: transform 200ms ease;
+}
+
+.scSourceCard:hover .scSourceCardIcon {
+  transform: scale(1.08);
+}
+
+.scSourceCardTitle {
+  color: var(--ink);
+  font-family: var(--font-dm-sans), sans-serif;
+  font-size: 0.96rem;
+  font-weight: 650;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* Mobile defaults (2 columns) */
+.scSourcesGrid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.scSourceCard:nth-child(2n) {
+  border-right: none;
+}
+
+/* The 15th item (last child) spans 2 columns on mobile */
+.scSourceCard:last-child {
+  grid-column: span 2;
+  border-right: none;
+  border-bottom: none;
+}
+
+.scSourceCard:nth-child(14) {
+  border-right: none;
+}
+
+/* Tablet (3 columns) */
+@media (min-width: 768px) and (max-width: 991px) {
+  .scSourcesGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  /* Reset mobile spans if any */
+  .scSourceCard:last-child {
+    grid-column: auto;
+  }
+  
+  .scSourceCard {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  
+  .scSourceCard:nth-child(3n) {
+    border-right: none;
+  }
+  
+  .scSourceCard:nth-child(n+13) {
+    border-bottom: none;
+  }
+}
+
+/* Desktop (5 columns) */
+@media (min-width: 992px) {
+  .scSourcesGrid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  
+  /* Reset mobile/tablet spans if any */
+  .scSourceCard:last-child {
+    grid-column: auto;
+  }
+  
+  .scSourceCard {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  
+  .scSourceCard:nth-child(5n) {
+    border-right: none;
+  }
+  
+  .scSourceCard:nth-child(n+11) {
+    border-bottom: none;
+  }
+}
+
 /* Workflows Section */
 .workflowsSection {
   padding: 92px 0;
