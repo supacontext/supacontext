@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { ComparisonSection } from "../components/comparison-section";
 import { CopyCommand } from "../components/copy-command";
+import { FAQSection } from "../components/faq-section";
 import { FounderQuoteSection } from "../components/founder-quote-section";
 import { HowItWorksSection } from "../components/how-it-works-section";
 import { AgenticApiSection } from "../components/agentic-api-section";
@@ -123,6 +124,7 @@ export default function HomePage() {
         <WorkflowsSection />
         <WorksWithSection />
         <PricingSection />
+        <FAQSection />
       </main>
     </>
   );

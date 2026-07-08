@@ -55,10 +55,16 @@ export function WorkflowsSection() {
   }, [isHovered, activeIndex]);
 
   useEffect(() => {
-    if (progress >= 100) {
+    if (progress < 100) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
       setActiveIndex((current) => (current + 1) % agents.length);
       setProgress(0);
-    }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [progress]);
 
   const handleManualClick = (index: number) => {
