@@ -24,14 +24,15 @@ export function SourcesSection() {
       <div className="sectionHeader centeredHeader">
         <h2 id="sources-title">14+ sources. One clean response.</h2>
         <p className="mutedText scSourcesSub">
-          Send one query. Supacontext gathers the evidence, cuts the noise, and returns compact JSON your agent can cite.
+          Send one query. Supacontext gathers the evidence, cuts the noise, and returns compact JSON
+          your agent can cite.
         </p>
       </div>
 
       <div className="scSourcesGrid">
         {sources.map((source) => {
           const cardClassName = `scSourceCard${source.comingSoon ? " scSourceCardComingSoon" : ""}${source.isRequest ? " scSourceCardRequest" : ""}`;
-          
+
           if (source.isRequest) {
             return (
               <a
@@ -66,9 +67,7 @@ export function SourcesSection() {
                 />
               </span>
               <span className="scSourceCardTitle">{source.name}</span>
-              {source.comingSoon ? (
-                <span className="scComingSoonTooltip">Coming Soon</span>
-              ) : null}
+              {source.comingSoon ? <span className="scComingSoonTooltip">Coming Soon</span> : null}
             </div>
           );
         })}

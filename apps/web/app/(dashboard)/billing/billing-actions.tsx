@@ -36,7 +36,12 @@ export function BillingActionButton({ plan, label }: { plan: PaidPlan; label: st
 
   return (
     <div className="billingAction">
-      <button className="button primaryButton fullButton" disabled={pending} onClick={checkout} type="button">
+      <button
+        className="button primaryButton fullButton"
+        disabled={pending}
+        onClick={checkout}
+        type="button"
+      >
         <CreditCard aria-hidden="true" size={16} />
         {pending ? "Opening..." : label}
       </button>
@@ -72,7 +77,12 @@ export function ManageBillingButton() {
 
   return (
     <div className="billingAction">
-      <button className="button secondaryButton" disabled={pending} onClick={openPortal} type="button">
+      <button
+        className="button secondaryButton"
+        disabled={pending}
+        onClick={openPortal}
+        type="button"
+      >
         <ExternalLink aria-hidden="true" size={16} />
         {pending ? "Opening..." : "Manage billing"}
       </button>

@@ -12,7 +12,6 @@ import { WorksWithSection } from "../components/works-with-section";
 import { PricingSection } from "../components/pricing-section";
 import { SourcesSection } from "../components/sources-section";
 
-
 const sourceLogos = [
   { name: "Web", logoClass: "webSourceLogo" },
   { name: "Instagram", logoClass: "instagramSourceLogo" },
@@ -60,7 +59,8 @@ export default function HomePage() {
         <section className="scHero scHeroDotted">
           <div className="scHeroCopy">
             <h1>
-              The context API for<span className="heroHeadingPhrase">
+              The context API for
+              <span className="heroHeadingPhrase">
                 <span className="heroHeadingDecoration" aria-hidden="true" />
                 agents
               </span>

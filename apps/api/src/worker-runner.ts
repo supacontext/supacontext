@@ -46,7 +46,11 @@ export class HttpContextJobRunner implements ContextJobRunner {
         signal: AbortSignal.timeout(120_000),
       });
     } catch {
-      throw new ApiError(500, "internal_error", "Context worker did not respond before the request timeout.");
+      throw new ApiError(
+        500,
+        "internal_error",
+        "Context worker did not respond before the request timeout.",
+      );
     }
 
     if (!response.ok) {

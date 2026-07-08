@@ -6,7 +6,8 @@ export function AgenticApiSection() {
       <div className="agenticIntro">
         <h2 id="agentic-api-title">A research agent behind every request.</h2>
         <p>
-          Supacontext searches 14+ public sources, compares signals, and returns compact cited JSON your agent can use.
+          Supacontext searches 14+ public sources, compares signals, and returns compact cited JSON
+          your agent can use.
         </p>
       </div>
 

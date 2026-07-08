@@ -71,7 +71,9 @@ export default async function DashboardPage() {
           <div className="cardHeader">
             <div>
               <h2>Quickstart</h2>
-              <p className="mutedText">Use a key from the dashboard and call the main context API.</p>
+              <p className="mutedText">
+                Use a key from the dashboard and call the main context API.
+              </p>
             </div>
             <Link className="iconLink" href="/docs/quickstart" aria-label="Open quickstart docs">
               <ArrowRight aria-hidden="true" size={18} />

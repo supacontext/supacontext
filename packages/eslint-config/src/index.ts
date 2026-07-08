@@ -80,4 +80,3 @@ export const nextConfig: Linter.Config[] = [
   ...browserBaseConfig,
   ...nextCoreWebVitals,
 ] as unknown as Linter.Config[];
-

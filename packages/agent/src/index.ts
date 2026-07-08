@@ -36,4 +36,3 @@ export type AgentJobResult = {
   context: CompiledAgentContext;
   creditsSpent: number;
 };
-

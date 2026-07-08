@@ -22,4 +22,3 @@ if (entrypoint === import.meta.url) {
     process.exit(1);
   }
 }
-

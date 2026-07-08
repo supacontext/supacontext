@@ -22,7 +22,7 @@ const integrations = [
 export function WorksWithSection() {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const resetTimeoutRef = useRef<number | null>(null);
-  
+
   const setupCommand = "Read and follow https://www.supacontext.dev/agent-setup/SKILL.md";
 
   useEffect(() => {

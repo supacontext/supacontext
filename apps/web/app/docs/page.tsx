@@ -63,7 +63,8 @@ export default function DocsPage() {
             <RadioTower aria-hidden="true" size={22} />
             <h3>Platform selection</h3>
             <p className="mutedText">
-              Use web, reddit, x, youtube, or omit platforms to let the API use all supported sources.
+              Use web, reddit, x, youtube, or omit platforms to let the API use all supported
+              sources.
             </p>
           </article>
           <article className="card">

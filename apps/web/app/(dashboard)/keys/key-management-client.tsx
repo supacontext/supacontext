@@ -124,7 +124,12 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
             <strong>Copy this key now. It cannot be shown again.</strong>
             <code>{rawKey}</code>
           </div>
-          <button className="iconButton" onClick={() => copy(rawKey)} type="button" aria-label="Copy API key">
+          <button
+            className="iconButton"
+            onClick={() => copy(rawKey)}
+            type="button"
+            aria-label="Copy API key"
+          >
             <Copy aria-hidden="true" size={17} />
           </button>
         </div>
@@ -134,7 +139,11 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
         <div className="emptyState">
           <KeyRound aria-hidden="true" size={24} />
           <p>No API keys yet.</p>
-          <button className="button primaryButton" onClick={() => setDialogOpen(true)} type="button">
+          <button
+            className="button primaryButton"
+            onClick={() => setDialogOpen(true)}
+            type="button"
+          >
             Create first key
           </button>
         </div>
@@ -148,7 +157,9 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
                   <span>{key.prefix}...</span>
                 </div>
                 <span>{key.maxDepth}</span>
-                <span>{key.monthlyCreditLimit === null ? "Unlimited" : key.monthlyCreditLimit}</span>
+                <span>
+                  {key.monthlyCreditLimit === null ? "Unlimited" : key.monthlyCreditLimit}
+                </span>
                 <span>{formatDateTime(key.lastUsedAt)}</span>
                 <span>{formatDateTime(key.createdAt)}</span>
                 {key.revokedAt ? (
@@ -177,13 +188,22 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
                 <h2>Create API key</h2>
                 <p className="mutedText">{activeKeys.length} active keys in this workspace.</p>
               </div>
-              <button className="iconButton" onClick={() => setDialogOpen(false)} type="button" aria-label="Close">
+              <button
+                className="iconButton"
+                onClick={() => setDialogOpen(false)}
+                type="button"
+                aria-label="Close"
+              >
                 <X aria-hidden="true" size={18} />
               </button>
             </div>
             <label className="field">
               <span>Key Name</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Production agent" />
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Production agent"
+              />
             </label>
             <label className="field">
               <span>Credits Limit / Month</span>
@@ -197,7 +217,10 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
             </label>
             <label className="field">
               <span>Max Depth Level</span>
-              <select value={maxDepth} onChange={(event) => setMaxDepth(event.target.value as ContextDepth)}>
+              <select
+                value={maxDepth}
+                onChange={(event) => setMaxDepth(event.target.value as ContextDepth)}
+              >
                 {CONTEXT_DEPTHS.map((depth) => (
                   <option key={depth} value={depth}>
                     {depth}
@@ -206,10 +229,19 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
               </select>
             </label>
             <div className="modalActions">
-              <button className="button secondaryButton" onClick={() => setDialogOpen(false)} type="button">
+              <button
+                className="button secondaryButton"
+                onClick={() => setDialogOpen(false)}
+                type="button"
+              >
                 Cancel
               </button>
-              <button className="button primaryButton" disabled={pending} onClick={createKey} type="button">
+              <button
+                className="button primaryButton"
+                disabled={pending}
+                onClick={createKey}
+                type="button"
+              >
                 {pending ? "Creating..." : "Create key"}
               </button>
             </div>

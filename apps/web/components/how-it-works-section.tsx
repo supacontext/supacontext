@@ -23,7 +23,9 @@ const steps = [
     number: "3",
     title: "Return cited context",
     description: (
-      <p className="hiwCardText">Your agent gets structured JSON with citations in every response.</p>
+      <p className="hiwCardText">
+        Your agent gets structured JSON with citations in every response.
+      </p>
     ),
   },
 ];

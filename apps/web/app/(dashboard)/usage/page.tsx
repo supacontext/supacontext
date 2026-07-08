@@ -124,7 +124,9 @@ export default async function UsagePage({
                     </div>
                   </div>
                   {request.error ? <div className="alert errorAlert">{request.error}</div> : null}
-                  <pre>{JSON.stringify(request.resultJson ?? { status: request.status }, null, 2)}</pre>
+                  <pre>
+                    {JSON.stringify(request.resultJson ?? { status: request.status }, null, 2)}
+                  </pre>
                 </div>
               </details>
             ))}

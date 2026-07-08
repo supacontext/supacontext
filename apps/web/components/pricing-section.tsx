@@ -1,165 +1,285 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { Check } from "lucide-react";
 import Link from "next/link";
-import { PLANS, PLAN_RATE_LIMITS } from "@supacontext/core";
-import { formatCredits, formatMoney } from "../lib/usage-formatting";
 
-const gridPlans = ["starter", "builder", "pro"] as const;
+type Feature = {
+  text: string;
+  tooltip?: string;
+};
+
+type Plan = {
+  slug: string;
+  name: string;
+  description: string;
+  creditsLabel: string;
+  monthlyPrice?: number;
+  priceText?: string;
+  periodText?: string;
+  buttonText: string;
+  buttonHref: string;
+  isPopular?: boolean;
+  features: Feature[];
+};
+
+const selfServePlans: Plan[] = [
+  {
+    slug: "free",
+    name: "Free",
+    description: "Test Supacontext in a prototype or side project.",
+    creditsLabel: "250 credits / one-time",
+    priceText: "$0",
+    periodText: "one-time",
+    buttonText: "Start Free",
+    buttonHref: "/dashboard",
+    features: [
+      {
+        text: "~25 runs one-time",
+        tooltip: "Estimate based on 10 credits per run. Actual usage depends on query and effort level.",
+      },
+      {
+        text: "1 concurrent request",
+        tooltip: "The number of context requests that can run in parallel. Extra requests wait in queue.",
+      },
+      { text: "Lower rate limits", tooltip: "5 requests per minute." },
+    ],
+  },
+  {
+    slug: "starter",
+    name: "Starter",
+    description: "For people adding fresh context to their agents.",
+    creditsLabel: "5,000 credits / month",
+    monthlyPrice: 19,
+    buttonText: "Choose Starter",
+    buttonHref: "/dashboard",
+    isPopular: true,
+    features: [
+      {
+        text: "~500 runs / month",
+        tooltip: "Estimate based on 10 credits per run. Actual usage depends on query and effort level.",
+      },
+      {
+        text: "3 concurrent requests",
+        tooltip: "The number of context requests that can run in parallel. Extra requests wait in queue.",
+      },
+      { text: "Basic support" },
+    ],
+  },
+  {
+    slug: "pro",
+    name: "Pro",
+    description: "For apps that call Supacontext every day.",
+    creditsLabel: "25,000 credits / month",
+    monthlyPrice: 79,
+    buttonText: "Choose Pro",
+    buttonHref: "/dashboard",
+    features: [
+      {
+        text: "~2,500 runs / month",
+        tooltip: "Estimate based on 10 credits per run. Actual usage depends on query and effort level.",
+      },
+      {
+        text: "10 concurrent requests",
+        tooltip: "The number of context requests that can run in parallel. Extra requests wait in queue.",
+      },
+      { text: "Standard support" },
+    ],
+  },
+  {
+    slug: "growth",
+    name: "Growth",
+    description: "For high-volume apps with heavier parallel work.",
+    creditsLabel: "75,000 credits / month",
+    monthlyPrice: 199,
+    buttonText: "Choose Growth",
+    buttonHref: "/dashboard",
+    features: [
+      {
+        text: "~7,500 runs / month",
+        tooltip: "Estimate based on 10 credits per run. Actual usage depends on query and effort level.",
+      },
+      {
+        text: "25 concurrent requests",
+        tooltip: "The number of context requests that can run in parallel. Extra requests wait in queue.",
+      },
+      { text: "Priority support" },
+    ],
+  },
+];
+
+const scalePlans: Plan[] = [
+  {
+    slug: "scale",
+    name: "Scale",
+    description: "For larger pipelines that need more credits and throughput.",
+    creditsLabel: "200,000 credits / month",
+    monthlyPrice: 499,
+    buttonText: "Choose Scale",
+    buttonHref: "/dashboard",
+    features: [
+      {
+        text: "~20,000 runs / month",
+        tooltip: "Estimate based on 10 credits per run. Actual usage depends on query and effort level.",
+      },
+      {
+        text: "75 concurrent requests",
+        tooltip: "The number of context requests that can run in parallel. Extra requests wait in queue.",
+      },
+      { text: "Priority support" },
+    ],
+  },
+  {
+    slug: "enterprise",
+    name: "Enterprise",
+    description: "For teams that need custom limits, contracts, or support.",
+    creditsLabel: "Custom credits",
+    priceText: "Custom",
+    buttonText: "Contact Sales",
+    buttonHref: "mailto:sales@supacontext.com",
+    features: [
+      { text: "Custom run volume", tooltip: "Credits and estimated run volume are scoped with your team." },
+      {
+        text: "Custom concurrency",
+        tooltip: "The number of context requests that can run in parallel. Extra requests wait in queue.",
+      },
+      { text: "Dedicated support and SLA" },
+    ],
+  },
+];
+
+function getDisplayedMonthlyPrice(monthlyPrice: number, annualBilling: boolean) {
+  if (!annualBilling) {
+    return monthlyPrice;
+  }
+
+  return Math.round((monthlyPrice * 10) / 12);
+}
 
 export function PricingSection() {
-  const scalePlan = PLANS.scale;
-  const scaleLimits = PLAN_RATE_LIMITS.scale;
+  const [activeTab, setActiveTab] = useState<"self-serve" | "scale">("self-serve");
+  const [annualBilling, setAnnualBilling] = useState(true);
+
+  const plansToShow = activeTab === "self-serve" ? selfServePlans : scalePlans;
 
   return (
     <section className="section pricingSection" aria-labelledby="pricing-title">
-      <div className="sectionHeader centeredHeader">
-        <h2 id="pricing-title">Simple, transparent pricing</h2>
+      <div className="sectionHeader centeredHeader pricingIntro">
+        <h2 id="pricing-title">Pay by effort. Scale with credits.</h2>
         <p className="mutedText">
-          Every new account includes 50 free trial credits. Upgrade when you need more power.
+          Low effort runs start at 5 credits. Use Medium, High, and Extra High when you need deeper
+          context from 14+ public sources.
         </p>
       </div>
 
+      <div className="pricingTabsWrapper">
+        <div className="pricingTabs" role="tablist" aria-label="Pricing plan type">
+          <button
+            className={`pricingTabButton ${activeTab === "self-serve" ? "active" : ""}`}
+            onClick={() => setActiveTab("self-serve")}
+            role="tab"
+            aria-selected={activeTab === "self-serve"}
+            type="button"
+          >
+            Self-serve
+          </button>
+          <button
+            className={`pricingTabButton ${activeTab === "scale" ? "active" : ""}`}
+            onClick={() => setActiveTab("scale")}
+            role="tab"
+            aria-selected={activeTab === "scale"}
+            type="button"
+          >
+            Scale
+          </button>
+        </div>
+      </div>
+
       <div className="pricingGridWrapper">
-        <div className="pricingGrid">
-          {gridPlans.map((slug) => {
-            const plan = PLANS[slug];
-            const limits = PLAN_RATE_LIMITS[slug];
-            const isPopular = slug === "builder";
+        <div className={`pricingGrid newPricingGrid ${activeTab === "scale" ? "scalePricingGrid" : ""}`}>
+          {plansToShow.map((plan) => {
+            const isPopular = plan.isPopular;
+            const hasAnnualToggle = plan.monthlyPrice !== undefined;
+            const annualSavings = hasAnnualToggle ? plan.monthlyPrice! * 2 : 0;
+            const priceText = hasAnnualToggle
+              ? `$${getDisplayedMonthlyPrice(plan.monthlyPrice!, annualBilling)}`
+              : plan.priceText;
+            const periodText = hasAnnualToggle ? "/mo" : plan.periodText;
 
             return (
-              <div
-                key={slug}
-                className={`pricingCard ${isPopular ? "pricingCardPopular" : ""}`}
+              <article
+                key={plan.slug}
+                className={`pricingCard scPricingCard ${hasAnnualToggle ? "pricingCardAnnual" : ""} ${
+                  isPopular ? "pricingCardPopular" : ""
+                }`}
               >
-                {isPopular && (
-                  <div className="popularBadge">Most Popular</div>
-                )}
+                {isPopular && <div className="popularBadge">Recommended</div>}
+
                 <div className="pricingCardHeader">
                   <h3 className="planName">{plan.name}</h3>
-                  <p className="planDescription">
-                    {slug === "starter" && "For early-stage projects and individuals."}
-                    {slug === "builder" && "For teams building production agents."}
-                    {slug === "pro" && "For high-volume production applications."}
-                  </p>
-                  <div className="planPriceWrapper">
-                    <span className="planPrice">{formatMoney(plan.priceCents)}</span>
-                    <span className="planPeriod">
-                      {plan.billingInterval === "month" ? "/mo" : " one-time"}
-                    </span>
+                  <p className="planDescription">{plan.description}</p>
+                  <div className="planCreditsLine">
+                    <strong>{plan.creditsLabel}</strong>
                   </div>
+                  <div className="planCreditsDivider" />
+                  <div className="planPriceWrapper">
+                    <span className="planPrice">{priceText}</span>
+                    {periodText && <span className="planPeriod">{periodText}</span>}
+                  </div>
+                  {hasAnnualToggle ? (
+                    <label className="annualBillingToggle">
+                      <input
+                        checked={annualBilling}
+                        onChange={(event) => setAnnualBilling(event.target.checked)}
+                        type="checkbox"
+                        aria-label={`Bill ${plan.name} yearly`}
+                      />
+                      <span className="annualToggleTrack" aria-hidden="true">
+                        <span className="annualToggleThumb" />
+                      </span>
+                      <span>{annualBilling ? "Billed yearly" : "Monthly"}</span>
+                      <strong>Save ${annualSavings}</strong>
+                    </label>
+                  ) : (
+                    <div className="annualBillingToggle annualBillingTogglePlaceholder" aria-hidden="true" />
+                  )}
                 </div>
+
+                <div className="pricingCardAction">
+                  <Link
+                    href={plan.buttonHref}
+                    className={`button fullButton ${isPopular ? "primaryButton" : "secondaryButton"}`}
+                  >
+                    {plan.buttonText}
+                  </Link>
+                </div>
+
+                <div className="pricingCardDivider" />
 
                 <div className="pricingCardBody">
                   <ul className="planFeatureList">
-                    <li className="planFeature">
-                      <div className="planFeatureIcon">
-                        <Check size={16} strokeWidth={3} />
-                      </div>
-                      <span>
-                        <strong>{formatCredits(plan.includedCredits)}</strong>
-                        {plan.billingInterval === "month" ? " / month" : ""}
-                      </span>
-                    </li>
-                    <li className="planFeature">
-                      <div className="planFeatureIcon">
-                        <Check size={16} strokeWidth={3} />
-                      </div>
-                      <span>
-                        <strong>{limits.requestsPerMinute}</strong> requests / min
-                      </span>
-                    </li>
-                    <li className="planFeature">
-                      <div className="planFeatureIcon">
-                        <Check size={16} strokeWidth={3} />
-                      </div>
-                      <span>
-                        <strong>{limits.concurrentJobs}</strong> concurrent jobs
-                      </span>
-                    </li>
-                    <li className="planFeature">
-                      <div className="planFeatureIcon">
-                        <Check size={16} strokeWidth={3} />
-                      </div>
-                      <span>Access to all 12+ data sources</span>
-                    </li>
+                    {plan.features.map((feature) => (
+                      <li key={feature.text} className="planFeature">
+                        <div className="planFeatureIcon">
+                          <Check size={15} strokeWidth={3} />
+                        </div>
+                        {feature.tooltip ? (
+                          <span className="planFeatureTooltip" tabIndex={0}>
+                            {feature.text}
+                            <span className="planFeatureTooltipText" role="tooltip">
+                              {feature.tooltip}
+                            </span>
+                          </span>
+                        ) : (
+                          <span>{feature.text}</span>
+                        )}
+                      </li>
+                    ))}
                   </ul>
                 </div>
-
-                <div className="pricingCardFooter">
-                  <Link
-                    href="/dashboard"
-                    className={`button fullButton ${
-                      isPopular ? "primaryButton" : "secondaryButton"
-                    }`}
-                  >
-                    Choose {plan.name}
-                  </Link>
-                </div>
-              </div>
+              </article>
             );
           })}
-        </div>
-
-        {/* Scale / Enterprise Card */}
-        <div className="pricingScaleCard">
-          <div className="scaleCardContent">
-            <h3 className="planName">{scalePlan.name}</h3>
-            <p className="planDescription" style={{ marginBottom: "16px", minHeight: "auto" }}>
-              For large scale usage and massive context volume.
-            </p>
-            <div className="planPriceWrapper">
-              <span className="planPrice">{formatMoney(scalePlan.priceCents)}</span>
-              <span className="planPeriod">
-                {scalePlan.billingInterval === "month" ? "/mo" : " one-time"}
-              </span>
-            </div>
-          </div>
-
-          <div className="scaleCardFeatures">
-            <ul className="planFeatureList">
-              <li className="planFeature">
-                <div className="planFeatureIcon">
-                  <Check size={16} strokeWidth={3} />
-                </div>
-                <span>
-                  <strong>{formatCredits(scalePlan.includedCredits)}</strong> / month
-                </span>
-              </li>
-              <li className="planFeature">
-                <div className="planFeatureIcon">
-                  <Check size={16} strokeWidth={3} />
-                </div>
-                <span>
-                  <strong>{scaleLimits.requestsPerMinute}</strong> requests / min
-                </span>
-              </li>
-            </ul>
-            <ul className="planFeatureList">
-              <li className="planFeature">
-                <div className="planFeatureIcon">
-                  <Check size={16} strokeWidth={3} />
-                </div>
-                <span>
-                  <strong>{scaleLimits.concurrentJobs}</strong> concurrent jobs
-                </span>
-              </li>
-              <li className="planFeature">
-                <div className="planFeatureIcon">
-                  <Check size={16} strokeWidth={3} />
-                </div>
-                <span>Access to all 12+ data sources</span>
-              </li>
-            </ul>
-            <div>
-              <Link
-                href="/dashboard"
-                className="button secondaryButton fullButton"
-                style={{ marginTop: "12px" }}
-              >
-                Choose {scalePlan.name}
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     </section>

@@ -61,7 +61,8 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
       store,
       rateLimiter,
       qstash,
-      dependencies.workerRunner ?? new HttpContextJobRunner(env.WORKER_URL, env.WORKER_INTERNAL_TOKEN),
+      dependencies.workerRunner ??
+        new HttpContextJobRunner(env.WORKER_URL, env.WORKER_INTERNAL_TOKEN),
       env.API_KEY_HASH_SECRET,
     );
 
@@ -91,9 +92,9 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
     }
 
     request.log.error(error);
-    void reply.code(500).send(
-      formatError(new ApiError(500, "internal_error", "Internal server error.")),
-    );
+    void reply
+      .code(500)
+      .send(formatError(new ApiError(500, "internal_error", "Internal server error.")));
   });
 
   server.addHook("onClose", async () => {

@@ -54,4 +54,3 @@ export function verifyApiKey(rawKey: string, storedHash: string, secret: string)
 
   return timingSafeEqual(candidate, stored);
 }
-

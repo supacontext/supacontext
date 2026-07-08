@@ -4,7 +4,8 @@ export function FounderQuoteSection() {
       <div className="scFounderQuoteContent">
         <blockquote>
           <p>
-            “I built Supacontext because agents need better context than generic web search and raw research dumps.”
+            “I built Supacontext because agents need better context than generic web search and raw
+            research dumps.”
           </p>
           <footer>
             <div className="scFounderQuoteAuthor">

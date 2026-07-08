@@ -46,4 +46,3 @@ const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : undef
 if (entrypoint === import.meta.url) {
   await main();
 }
-

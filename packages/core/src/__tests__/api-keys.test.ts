@@ -24,4 +24,3 @@ describe("API key hashing", () => {
     expect(() => createApiKeyMaterial("short")).toThrow("at least 32 characters");
   });
 });
-
