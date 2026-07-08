@@ -165,10 +165,9 @@ export function PricingSection() {
   return (
     <section className="section pricingSection" aria-labelledby="pricing-title">
       <div className="sectionHeader centeredHeader pricingIntro">
-        <h2 id="pricing-title">Pay by effort. Scale with credits.</h2>
+        <h2 id="pricing-title">Flexible pricing, based on usage</h2>
         <p className="mutedText">
-          Low effort runs start at 5 credits. Use Medium, High, and Extra High when you need deeper
-          context from 14+ public sources.
+          Start free, then upgrade when your agents need more capacity.
         </p>
       </div>
 
@@ -181,7 +180,7 @@ export function PricingSection() {
             aria-selected={activeTab === "self-serve"}
             type="button"
           >
-            Self-serve
+            Standard plans
           </button>
           <button
             className={`pricingTabButton ${activeTab === "scale" ? "active" : ""}`}
@@ -190,7 +189,7 @@ export function PricingSection() {
             aria-selected={activeTab === "scale"}
             type="button"
           >
-            Scale
+            Scale plans
           </button>
         </div>
       </div>

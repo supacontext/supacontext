@@ -3151,6 +3151,20 @@ h3 {
 
 .pricingIntro {
   max-width: 700px;
+  contain: paint;
+}
+
+.pricingIntro h2 {
+  font-weight: 560;
+}
+
+.pricingIntro .mutedText {
+  margin-right: auto;
+  margin-bottom: 0;
+  margin-left: auto;
+  max-width: 660px;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .pricingGridWrapper {
@@ -3203,32 +3217,54 @@ h3 {
 
 .pricingTabs {
   display: inline-flex;
-  gap: 2px;
+  overflow: hidden;
   border: 1px solid var(--line);
-  padding: 3px;
-  background: #f4f6f8;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  background: var(--surface);
 }
 
 .pricingTabButton {
-  min-width: 116px;
+  position: relative;
+  min-width: 148px;
   border: 0;
-  padding: 9px 18px;
+  border-right: 1px solid var(--line);
+  padding: 11px 20px 12px;
   color: var(--muted);
   background: transparent;
   font-size: 0.9rem;
   font-weight: 800;
   line-height: 1;
   transition:
-    background 180ms ease,
     color 180ms ease,
-    box-shadow 180ms ease;
+    background 180ms ease;
+}
+
+.pricingTabButton:last-child {
+  border-right: 0;
+}
+
+.pricingTabButton::after {
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 2px;
+  background: var(--primary);
+  content: "";
+  opacity: 0;
+  transform: scaleX(0.7);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .pricingTabButton.active {
   color: var(--ink);
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(7, 17, 31, 0.08);
+  background: #f8fafc;
+}
+
+.pricingTabButton.active::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .scPricingCard {
