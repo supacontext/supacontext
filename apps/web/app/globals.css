@@ -3313,7 +3313,7 @@ h3 {
 
 .scPricingCard .pricingCardHeader {
   display: flex;
-  min-height: 244px;
+  min-height: 268px;
   flex-direction: column;
 }
 
