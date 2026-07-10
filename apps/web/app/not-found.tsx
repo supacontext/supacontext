@@ -5,7 +5,7 @@ export default function NotFoundPage() {
     <main className="notFoundPage">
       <p className="eyebrow">Not found</p>
       <h1>That page does not exist.</h1>
-      <p className="mutedText">Check the URL or return to the SupaContext dashboard.</p>
+      <p className="mutedText">Check the URL or return to the Supacontext dashboard.</p>
       <Link className="button primaryButton" href="/">
         Go home
       </Link>

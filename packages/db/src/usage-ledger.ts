@@ -50,8 +50,7 @@ function isInsufficientCreditsError(error: unknown): boolean {
   const postgresError = readPostgresError(error);
 
   return (
-    postgresError.code === "23514" &&
-    postgresError.constraint === "credit_balances_balance_check"
+    postgresError.code === "23514" && postgresError.constraint === "credit_balances_balance_check"
   );
 }
 

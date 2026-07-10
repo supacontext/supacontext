@@ -28,7 +28,10 @@ export function formatDateTime(value: Date | string | null | undefined): string 
   }).format(new Date(value));
 }
 
-export function formatLatency(startedAt: Date | string | null, completedAt: Date | string | null): string {
+export function formatLatency(
+  startedAt: Date | string | null,
+  completedAt: Date | string | null,
+): string {
   if (!startedAt || !completedAt) {
     return "Not available";
   }

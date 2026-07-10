@@ -89,7 +89,8 @@ class HttpQstashClient implements QstashClient {
     }
 
     const data = (await response.json()) as { messageId?: unknown };
-    const messageId = typeof data.messageId === "string" ? data.messageId : `qstash_${input.requestId}`;
+    const messageId =
+      typeof data.messageId === "string" ? data.messageId : `qstash_${input.requestId}`;
 
     return {
       messageId,

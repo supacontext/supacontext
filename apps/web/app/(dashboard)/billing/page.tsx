@@ -59,7 +59,13 @@ export default async function BillingPage() {
                 <p className="mutedText">{formatCredits(plan.includedCredits)} per month</p>
               </div>
               <BillingActionButton
-                label={active ? "Current plan" : currentPlan.priceCents > plan.priceCents ? "Downgrade" : "Upgrade"}
+                label={
+                  active
+                    ? "Current plan"
+                    : currentPlan.priceCents > plan.priceCents
+                      ? "Downgrade"
+                      : "Upgrade"
+                }
                 plan={slug}
               />
             </article>

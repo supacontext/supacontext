@@ -91,7 +91,7 @@ export class SupaContext {
 
   constructor(options: SupaContextClientOptions) {
     if (!options.apiKey) {
-      throw new Error("SupaContext API key is required.");
+      throw new Error("Supacontext API key is required.");
     }
 
     this.apiKey = options.apiKey;
@@ -105,11 +105,7 @@ export class SupaContext {
     });
   }
 
-  private async post<T>(
-    path: string,
-    body: unknown,
-    options: RequestOptions,
-  ): Promise<T> {
+  private async post<T>(path: string, body: unknown, options: RequestOptions): Promise<T> {
     return this.request<T>(path, {
       method: "POST",
       headers: {
@@ -133,7 +129,8 @@ export class SupaContext {
     if (!response.ok) {
       const body = data as ErrorBody;
       const code = body.error?.code ?? "internal_error";
-      const message = body.error?.message ?? `SupaContext request failed with status ${response.status}.`;
+      const message =
+        body.error?.message ?? `Supacontext request failed with status ${response.status}.`;
 
       throw new SupaContextError(response.status, code, message, body.error?.details);
     }
@@ -149,7 +146,11 @@ export class SupaContext {
     while (Date.now() <= expiresAt) {
       const response = await this.context.get(id);
 
-      if (response.status === "completed" || response.status === "failed" || response.status === "cancelled") {
+      if (
+        response.status === "completed" ||
+        response.status === "failed" ||
+        response.status === "cancelled"
+      ) {
         return response;
       }
 

@@ -2,7 +2,8 @@ import { authkitProxy } from "@workos-inc/authkit-nextjs";
 
 const configuredRedirectUri = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
 const appUrl = process.env.APP_URL;
-const redirectUri = configuredRedirectUri || (appUrl ? new URL("/callback", appUrl).toString() : undefined);
+const redirectUri =
+  configuredRedirectUri || (appUrl ? new URL("/callback", appUrl).toString() : undefined);
 
 if (!redirectUri) {
   throw new Error("Set NEXT_PUBLIC_WORKOS_REDIRECT_URI or APP_URL for WorkOS AuthKit.");

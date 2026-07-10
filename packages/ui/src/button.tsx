@@ -11,4 +11,3 @@ export function Button({ children, type = "button", ...props }: ButtonProps) {
     </button>
   );
 }
-

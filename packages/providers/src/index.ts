@@ -989,7 +989,7 @@ class HttpDeepSeekClient extends LoggedProvider implements DeepSeekClient {
 
   async repairJson(input: DeepSeekRepairInput): Promise<DeepSeekResult> {
     const repairPrompt = [
-      "Repair the following model output into valid JSON matching the requested SupaContext schema.",
+      "Repair the following model output into valid JSON matching the requested Supacontext schema.",
       "Return JSON only. Do not add commentary.",
       `Validation error: ${input.validationError}`,
       "Invalid output:",

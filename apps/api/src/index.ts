@@ -14,12 +14,12 @@ async function main(): Promise<void> {
 
     isClosing = true;
     const forceExitTimer = setTimeout(() => {
-      server.log.error({ signal }, "Timed out shutting down SupaContext API.");
+      server.log.error({ signal }, "Timed out shutting down Supacontext API.");
       process.exit(1);
     }, 10_000);
     forceExitTimer.unref();
 
-    server.log.info({ signal }, "Shutting down SupaContext API.");
+    server.log.info({ signal }, "Shutting down Supacontext API.");
 
     try {
       await server.close();
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       process.exit(0);
     } catch (error) {
       clearTimeout(forceExitTimer);
-      server.log.error(error, "Failed to shut down SupaContext API cleanly.");
+      server.log.error(error, "Failed to shut down Supacontext API cleanly.");
       process.exit(1);
     }
   };
@@ -46,4 +46,3 @@ const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : undef
 if (entrypoint === import.meta.url) {
   await main();
 }
-

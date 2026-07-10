@@ -48,7 +48,9 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3);
 }
 
-export function normalizeCandidates(candidates: NormalizedSourceCandidate[]): NormalizedEvidenceSource[] {
+export function normalizeCandidates(
+  candidates: NormalizedSourceCandidate[],
+): NormalizedEvidenceSource[] {
   const seen = new Map<string, NormalizedEvidenceSource>();
 
   for (const candidate of candidates) {
@@ -121,7 +123,10 @@ export function prefilterChunks(
       ...chunk,
       prefilterScore: scoreChunk(terms, chunk),
     }))
-    .sort((left, right) => right.prefilterScore - left.prefilterScore || left.id.localeCompare(right.id))
+    .sort(
+      (left, right) =>
+        right.prefilterScore - left.prefilterScore || left.id.localeCompare(right.id),
+    )
     .slice(0, limit);
 }
 

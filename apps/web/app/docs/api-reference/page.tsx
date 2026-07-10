@@ -81,7 +81,7 @@ export default function ApiReferencePage() {
               workspace, can set a monthly credit limit, and can cap max depth.
             </p>
             <p>
-              Store keys server-side only. Do not put SupaContext keys in browser bundles, public
+              Store keys server-side only. Do not put Supacontext keys in browser bundles, public
               mobile clients, logs, analytics events, or support screenshots.
             </p>
 
@@ -125,9 +125,9 @@ export default function ApiReferencePage() {
 
             <h2 id="jobs">Async jobs</h2>
             <p>
-              Use <code>{"\"async\": true"}</code> for work that may take longer. The create response
-              can return <code>202</code> with an id. Poll <code>GET /v1/context/:id</code> until the
-              status is completed, failed, or cancelled.
+              Use <code>{'"async": true'}</code> for work that may take longer. The create response
+              can return <code>202</code> with an id. Poll <code>GET /v1/context/:id</code> until
+              the status is completed, failed, or cancelled.
             </p>
 
             <h2 id="webhooks">Webhooks</h2>
@@ -146,17 +146,17 @@ export default function ApiReferencePage() {
             <h2 id="deploy">Railway deployment notes</h2>
             <p>
               Deploy separate web, API, and worker services from the monorepo. Set API and worker
-              health checks to <code>/health</code>. Apply Supabase migrations before routing traffic,
-              configure Creem webhooks to <code>/api/billing/creem/webhook</code>, and set QStash to
-              call the worker job endpoint.
+              health checks to <code>/health</code>. Apply Supabase migrations before routing
+              traffic, configure Creem webhooks to <code>/api/billing/creem/webhook</code>, and set
+              QStash to call the worker job endpoint.
             </p>
 
             <h2 id="env">Required environment groups</h2>
             <p>
               Configure WorkOS AuthKit, Supabase Postgres, Creem product ids and webhook secret,
-              Upstash Redis, QStash signing keys, provider keys, an internal worker token, and a
-              32+ character API key hash secret. See the
-              repository README and <code>.env.example</code> for exact variable names.
+              Upstash Redis, QStash signing keys, provider keys, an internal worker token, and a 32+
+              character API key hash secret. See the repository README and <code>.env.example</code>{" "}
+              for exact variable names.
             </p>
           </article>
         </section>

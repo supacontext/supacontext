@@ -18,8 +18,7 @@ if (entrypoint === import.meta.url) {
   try {
     await main();
   } catch (error) {
-    console.error("Failed to start SupaContext worker.", error);
+    console.error("Failed to start Supacontext worker.", error);
     process.exit(1);
   }
 }
-

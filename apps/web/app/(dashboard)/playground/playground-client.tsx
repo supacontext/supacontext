@@ -2,7 +2,13 @@
 
 import { Check, Copy, Play, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
-import { CONTEXT_DEPTHS, PLATFORMS, type ContextDepth, type Platform, type PublicContextResponse } from "@supacontext/core";
+import {
+  CONTEXT_DEPTHS,
+  PLATFORMS,
+  type ContextDepth,
+  type Platform,
+  type PublicContextResponse,
+} from "@supacontext/core";
 import { DEPTH_CREDIT_COST } from "@supacontext/core";
 
 type PlaygroundApiResponse =
@@ -105,7 +111,9 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
         <div>
           <p className="eyebrow">Playground</p>
           <h1>Run a context query.</h1>
-          <p className="mutedText">This dashboard route uses your workspace auth and first active key.</p>
+          <p className="mutedText">
+            This dashboard route uses your workspace auth and first active key.
+          </p>
         </div>
 
         <label className="field">
@@ -140,12 +148,23 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
           </div>
         </fieldset>
 
-        <button className="button primaryButton" disabled={status === "running"} onClick={run} type="button">
-          {status === "running" ? <RefreshCw aria-hidden="true" size={16} /> : <Play aria-hidden="true" size={16} />}
+        <button
+          className="button primaryButton"
+          disabled={status === "running"}
+          onClick={run}
+          type="button"
+        >
+          {status === "running" ? (
+            <RefreshCw aria-hidden="true" size={16} />
+          ) : (
+            <Play aria-hidden="true" size={16} />
+          )}
           {status === "running" ? "Running..." : "Run"}
         </button>
 
-        {!hasApiKey ? <div className="alert errorAlert">Create an API key first on the Keys page.</div> : null}
+        {!hasApiKey ? (
+          <div className="alert errorAlert">Create an API key first on the Keys page.</div>
+        ) : null}
         {error ? <div className="alert errorAlert">{error}</div> : null}
       </section>
 
@@ -155,7 +174,9 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
             <h2>Result JSON</h2>
             <p className="mutedText">
               Status: <strong>{status}</strong>
-              {result ? ` - ${result.usage.credits_charged} credits - ${result.usage.sources_used} sources` : ""}
+              {result
+                ? ` - ${result.usage.credits_charged} credits - ${result.usage.sources_used} sources`
+                : ""}
             </p>
           </div>
           <div className="buttonCluster">
@@ -166,7 +187,11 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
               type="button"
               aria-label="Copy JSON"
             >
-              {copied === "json" ? <Check aria-hidden="true" size={17} /> : <Copy aria-hidden="true" size={17} />}
+              {copied === "json" ? (
+                <Check aria-hidden="true" size={17} />
+              ) : (
+                <Copy aria-hidden="true" size={17} />
+              )}
             </button>
             <button
               className="iconButton"
@@ -174,7 +199,11 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
               type="button"
               aria-label="Copy curl"
             >
-              {copied === "curl" ? <Check aria-hidden="true" size={17} /> : <Copy aria-hidden="true" size={17} />}
+              {copied === "curl" ? (
+                <Check aria-hidden="true" size={17} />
+              ) : (
+                <Copy aria-hidden="true" size={17} />
+              )}
             </button>
           </div>
         </div>

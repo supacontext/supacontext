@@ -56,7 +56,11 @@ export function parseApiKeyForm(input: ApiKeyFormInput): ApiKeyFormResult {
     const parsedLimit =
       typeof limitValue === "number" ? limitValue : Number.parseInt(String(limitValue), 10);
 
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 0 || String(limitValue).trim() !== String(parsedLimit)) {
+    if (
+      !Number.isInteger(parsedLimit) ||
+      parsedLimit < 0 ||
+      String(limitValue).trim() !== String(parsedLimit)
+    ) {
       errors.push({
         field: "monthlyCreditLimit",
         message: "Monthly credit limit must be a non-negative whole number.",

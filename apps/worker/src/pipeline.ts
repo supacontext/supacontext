@@ -80,7 +80,12 @@ export class ResearchPipeline {
     const gaps: string[] = [];
     const candidates = await this.collectCandidates(request, budget, gaps);
     const normalizedSources = normalizeCandidates(candidates);
-    const selectedChunks = await this.selectEvidenceChunks(request, normalizedSources, budget, gaps);
+    const selectedChunks = await this.selectEvidenceChunks(
+      request,
+      normalizedSources,
+      budget,
+      gaps,
+    );
     const usedSourceIds = new Set(selectedChunks.map((chunk) => chunk.sourceId));
     const usedSources = normalizedSources.filter((source) => usedSourceIds.has(source.sourceId));
     const publicSources = toPublicSources(usedSources);
@@ -116,7 +121,10 @@ export class ResearchPipeline {
     const reserve = RESEARCH_UNIT_COST.agent_synthesis;
 
     for (const platform of platforms) {
-      if (request.platformMode === "auto" && candidates.length >= PROMPT_TIER_CONFIG[request.depth].evidenceLimit * 2) {
+      if (
+        request.platformMode === "auto" &&
+        candidates.length >= PROMPT_TIER_CONFIG[request.depth].evidenceLimit * 2
+      ) {
         break;
       }
 
@@ -354,7 +362,10 @@ export class ResearchPipeline {
       gaps.push(`Evidence was restricted to requested platforms: ${request.platforms.join(", ")}.`);
     }
 
-    if (usedSources.length > 0 && usedSources.every((source) => source.candidate.publishedAt === null)) {
+    if (
+      usedSources.length > 0 &&
+      usedSources.every((source) => source.candidate.publishedAt === null)
+    ) {
       gaps.push("Selected sources did not expose publication dates.");
     }
 
@@ -469,7 +480,11 @@ function providerGap(platform: string, error: unknown): string {
   return `${platform} retrieval failed before evidence could be normalized.`;
 }
 
-function applyRerank(chunks: EvidenceChunk[], rankings: RerankResult[], limit: number): EvidenceChunk[] {
+function applyRerank(
+  chunks: EvidenceChunk[],
+  rankings: RerankResult[],
+  limit: number,
+): EvidenceChunk[] {
   if (rankings.length === 0) {
     return chunks.slice(0, limit);
   }
@@ -593,22 +608,29 @@ function buildFinalResult(
     gaps: string[];
   },
 ): PublicContextResult {
-  const record = modelValue && typeof modelValue === "object" && !Array.isArray(modelValue)
-    ? modelValue as Record<string, unknown>
-    : {};
+  const record =
+    modelValue && typeof modelValue === "object" && !Array.isArray(modelValue)
+      ? (modelValue as Record<string, unknown>)
+      : {};
   const sourceIds = new Set(input.sources.map((source) => source.id));
   const contextPack = coerceContextPack(record.context_pack, sourceIds, input.chunks);
   const modelGaps = Array.isArray(record.gaps)
     ? record.gaps.map((gap) => cleanPublicText(gap, 500)).filter(Boolean)
     : [];
-  const answer = cleanPublicText(record.answer, 8_000) || fallbackAnswer(input.request.query, input.sources);
-  const platformsUsed = uniquePlatforms(input.sources.map((source) => source.platform), input.request.platforms);
+  const answer =
+    cleanPublicText(record.answer, 8_000) || fallbackAnswer(input.request.query, input.sources);
+  const platformsUsed = uniquePlatforms(
+    input.sources.map((source) => source.platform),
+    input.request.platforms,
+  );
 
   return {
     answer,
     context_pack: contextPack,
     sources: input.sources,
-    gaps: uniqueStrings([...input.gaps, ...modelGaps]).map((gap) => cleanPublicText(gap, 500)).filter(Boolean),
+    gaps: uniqueStrings([...input.gaps, ...modelGaps])
+      .map((gap) => cleanPublicText(gap, 500))
+      .filter(Boolean),
     usage: buildUsage({
       creditsCharged: input.request.creditsCharged,
       depth: input.request.depth,
@@ -628,21 +650,27 @@ function coerceContextPack(
   const items = Array.isArray(value) ? value : [];
   const packed = items
     .map((item) => {
-      const record = item && typeof item === "object" && !Array.isArray(item)
-        ? item as Record<string, unknown>
-        : {};
+      const record =
+        item && typeof item === "object" && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {};
       const supportingSources = Array.isArray(record.supporting_sources)
-        ? record.supporting_sources.filter((sourceId): sourceId is string => typeof sourceId === "string" && sourceIds.has(sourceId))
+        ? record.supporting_sources.filter(
+            (sourceId): sourceId is string =>
+              typeof sourceId === "string" && sourceIds.has(sourceId),
+          )
         : [];
-      const confidence = typeof record.confidence === "string" && confidenceValues.has(record.confidence)
-        ? record.confidence
-        : "medium";
+      const confidence =
+        typeof record.confidence === "string" && confidenceValues.has(record.confidence)
+          ? record.confidence
+          : "medium";
       const claim = cleanPublicText(record.claim, 1_200);
-      const finalSources = supportingSources.length > 0
-        ? supportingSources
-        : fallbackSourceId && sourceIds.has(fallbackSourceId)
-          ? [fallbackSourceId]
-          : [];
+      const finalSources =
+        supportingSources.length > 0
+          ? supportingSources
+          : fallbackSourceId && sourceIds.has(fallbackSourceId)
+            ? [fallbackSourceId]
+            : [];
 
       if (!claim || finalSources.length === 0) {
         return null;

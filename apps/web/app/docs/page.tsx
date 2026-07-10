@@ -27,7 +27,7 @@ export default function DocsPage() {
           <p className="eyebrow">Docs</p>
           <h1>Integrate live public context with one endpoint.</h1>
           <p className="heroText">
-            SupaContext accepts a query, optional depth, and optional platform list. It returns
+            Supacontext accepts a query, optional depth, and optional platform list. It returns
             compact JSON with citations, gaps, and usage metadata.
           </p>
         </section>
@@ -63,7 +63,8 @@ export default function DocsPage() {
             <RadioTower aria-hidden="true" size={22} />
             <h3>Platform selection</h3>
             <p className="mutedText">
-              Use web, reddit, x, youtube, or omit platforms to let the API use all supported sources.
+              Use web, reddit, x, youtube, or omit platforms to let the API use all supported
+              sources.
             </p>
           </article>
           <article className="card">

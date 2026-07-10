@@ -66,7 +66,7 @@ export type ResearchPrompt = {
 export function loadResearchPromptTemplate(): string {
   // Product prompt tuning is intentionally deferred. Keep this concise default easy to replace.
   return [
-    "You are SupaContext's research compiler.",
+    "You are Supacontext's research compiler.",
     "Return compact JSON only.",
     "Use only the supplied normalized evidence and cite source IDs exactly.",
     "Do not include raw provider payloads, raw HTML, or long transcripts.",
@@ -76,7 +76,8 @@ export function loadResearchPromptTemplate(): string {
 export function buildResearchPrompt(input: ResearchPromptInput): ResearchPrompt {
   const config = PROMPT_TIER_CONFIG[input.depth];
   const evidenceBlock = input.evidence.map(formatEvidence).join("\n\n");
-  const gapBlock = input.gaps.length > 0 ? input.gaps.map((gap) => `- ${gap}`).join("\n") : "- none";
+  const gapBlock =
+    input.gaps.length > 0 ? input.gaps.map((gap) => `- ${gap}`).join("\n") : "- none";
 
   return {
     systemPrompt: loadResearchPromptTemplate(),
@@ -95,9 +96,10 @@ export function buildResearchPrompt(input: ResearchPromptInput): ResearchPrompt 
 }
 
 function formatEvidence(evidence: AgentEvidenceInput): string {
-  const timing = evidence.startSeconds === undefined
-    ? ""
-    : `\nTimestamp: ${evidence.startSeconds}s${evidence.endSeconds === undefined || evidence.endSeconds === null ? "" : `-${evidence.endSeconds}s`}`;
+  const timing =
+    evidence.startSeconds === undefined
+      ? ""
+      : `\nTimestamp: ${evidence.startSeconds}s${evidence.endSeconds === undefined || evidence.endSeconds === null ? "" : `-${evidence.endSeconds}s`}`;
 
   return [
     `Source ID: ${evidence.sourceId}`,

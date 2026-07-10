@@ -2,7 +2,7 @@ import { createSupaContext } from "@supacontext/sdk";
 
 function getSupaContext() {
   if (!process.env.SUPACONTEXT_API_KEY) {
-    throw new Error("Set SUPACONTEXT_API_KEY before using the SupaContext tool.");
+    throw new Error("Set SUPACONTEXT_API_KEY before using the Supacontext tool.");
   }
 
   return createSupaContext({

@@ -1,6 +1,7 @@
 import { BarChart3, CreditCard, Gauge, KeyRound, Play, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LogoMark } from "./icons";
 import { UserMenu } from "./user-menu";
 
 const appLinks = [
@@ -16,8 +17,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="appFrame">
       <aside className="sidebar">
         <Link className="brand appBrand" href="/dashboard">
-          <span className="brandMark" aria-hidden="true" />
-          SupaContext
+          <LogoMark className="brandMark" />
+          Supacontext
         </Link>
         <nav className="appNav" aria-label="Dashboard navigation">
           {appLinks.map((link) => {
