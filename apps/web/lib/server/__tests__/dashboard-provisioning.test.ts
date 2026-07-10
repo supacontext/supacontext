@@ -33,7 +33,14 @@ describe("workspace provisioning", () => {
     mocks.createDatabaseClient.mockReset();
   });
 
-  it("gets or creates the workspace with one conflict-safe statement", async () => {
+  it("returns one workspace when the same user is provisioned concurrently", async () => {
+    let workspaceId: string | null = null;
+    let workspaceCreateCount = 0;
+    let lookupCount = 0;
+    let releaseLookups = () => {};
+    const concurrentLookups = new Promise<void>((resolve) => {
+      releaseLookups = resolve;
+    });
     const transaction = Object.assign(
       vi.fn(async (strings: TemplateStringsArray) => {
         const query = queryText(strings);
@@ -43,7 +50,17 @@ describe("workspace provisioning", () => {
         }
 
         if (query.startsWith("insert into workspaces")) {
-          return [{ id: "workspace_123" }];
+          if (workspaceId) {
+            if (!query.includes("on conflict (owner_profile_id) do update")) {
+              throw new Error("duplicate workspace");
+            }
+
+            return [{ id: workspaceId }];
+          }
+
+          workspaceId = "workspace_123";
+          workspaceCreateCount += 1;
+          return [{ id: workspaceId }];
         }
 
         return [];
@@ -51,7 +68,19 @@ describe("workspace provisioning", () => {
       { json: (value: unknown) => value },
     );
     const sql = Object.assign(
-      vi.fn(async () => []),
+      vi.fn(async (strings: TemplateStringsArray) => {
+        if (queryText(strings).startsWith("select profiles.id as profile_id")) {
+          lookupCount += 1;
+
+          if (lookupCount === 2) {
+            releaseLookups();
+          }
+
+          await concurrentLookups;
+        }
+
+        return [];
+      }),
       {
         begin: async (callback: (client: typeof transaction) => Promise<unknown>) =>
           callback(transaction),
@@ -60,26 +89,28 @@ describe("workspace provisioning", () => {
 
     mocks.createDatabaseClient.mockReturnValue(sql);
 
-    await expect(
-      provisionWorkspaceForUser({
-        id: "user_123",
-        email: "person@example.com",
-        firstName: "Person",
-        lastName: "Example",
-      } as never),
-    ).resolves.toMatchObject({
+    const user = {
+      id: "user_123",
+      email: "person@example.com",
+      firstName: "Person",
+      lastName: "Example",
+    } as never;
+    const [first, second] = await Promise.all([
+      provisionWorkspaceForUser(user),
+      provisionWorkspaceForUser(user),
+    ]);
+
+    expect(first).toMatchObject({
       profileId: "profile_123",
       workspaceId: "workspace_123",
       workosUserId: "user_123",
     });
-
-    const workspaceCall = transaction.mock.calls.find(([strings]) =>
-      queryText(strings).startsWith("insert into workspaces"),
-    );
-
-    expect(workspaceCall).toBeDefined();
-    expect(queryText(workspaceCall![0])).toContain(
-      "on conflict (owner_profile_id) do update set owner_profile_id = excluded.owner_profile_id returning id",
-    );
+    expect(second).toEqual(first);
+    expect(workspaceCreateCount).toBe(1);
+    expect(
+      transaction.mock.calls.filter(([strings]) =>
+        queryText(strings).startsWith("insert into workspaces"),
+      ),
+    ).toHaveLength(2);
   });
 });
