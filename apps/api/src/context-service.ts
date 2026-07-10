@@ -1,5 +1,7 @@
 import {
   PLATFORMS,
+  creditDecimalToMicrocredits,
+  creditMicrocreditsToDisplayNumber,
   type Platform,
   type PlatformMode,
   type PlanSlug,
@@ -35,7 +37,7 @@ export type CreateContextRequestResult =
       body: {
         id: string;
         status: "queued";
-        credits_charged: number;
+        credits_reserved: number;
       };
     };
 
@@ -68,7 +70,11 @@ export class ContextService {
     const platformSelection = this.resolvePlatforms(parsed.data.platforms);
     const idempotencyRequestHash = createContextRequestIdempotencyHash({
       query: parsed.data.query,
-      depth: parsed.data.depth,
+      effort: parsed.data.effort,
+      callerMaxCreditMicros:
+        parsed.data.max_credits === undefined
+          ? null
+          : creditDecimalToMicrocredits(parsed.data.max_credits),
       platforms: platformSelection.platforms,
       platformMode: platformSelection.mode,
       async: parsed.data.async,
@@ -90,7 +96,7 @@ export class ContextService {
             body: {
               id: existing.id,
               status: "queued",
-              credits_charged: existing.spent_credits,
+              credits_reserved: creditMicrocreditsToDisplayNumber(existing.reserved_microcredits),
             },
           };
         }
@@ -108,7 +114,11 @@ export class ContextService {
       apiKey,
       plan,
       query: parsed.data.query,
-      depth: parsed.data.depth,
+      effort: parsed.data.effort,
+      callerMaxCreditMicros:
+        parsed.data.max_credits === undefined
+          ? null
+          : creditDecimalToMicrocredits(parsed.data.max_credits),
       platforms: platformSelection.platforms,
       platformMode: platformSelection.mode,
       async: parsed.data.async,
@@ -124,7 +134,9 @@ export class ContextService {
             body: {
               id: accepted.request.id,
               status: "queued",
-              credits_charged: accepted.request.spent_credits,
+              credits_reserved: creditMicrocreditsToDisplayNumber(
+                accepted.request.reserved_microcredits,
+              ),
             },
           }
         : {
@@ -139,7 +151,8 @@ export class ContextService {
           requestId: accepted.request.id,
           workspaceId: apiKey.workspace_id,
           query: parsed.data.query,
-          depth: parsed.data.depth,
+          effort: parsed.data.effort,
+          ...(parsed.data.max_credits === undefined ? {} : { maxCredits: parsed.data.max_credits }),
           platforms: platformSelection.platforms,
           ...(parsed.data.webhook_url ? { webhookUrl: parsed.data.webhook_url } : {}),
           ...(parsed.data.metadata ? { metadata: parsed.data.metadata } : {}),
@@ -151,7 +164,6 @@ export class ContextService {
           accepted.request.id,
           "internal_error",
           error instanceof Error ? error.message : "Could not enqueue context job.",
-          { refundCredits: true },
         );
         throw error;
       }
@@ -161,7 +173,9 @@ export class ContextService {
         body: {
           id: accepted.request.id,
           status: "queued",
-          credits_charged: accepted.request.spent_credits,
+          credits_reserved: creditMicrocreditsToDisplayNumber(
+            accepted.request.reserved_microcredits,
+          ),
         },
       };
     }
@@ -175,7 +189,6 @@ export class ContextService {
         accepted.request.id,
         "internal_error",
         error instanceof Error ? error.message : "Context worker failed to process the request.",
-        { refundCredits: true },
       );
       throw error;
     }
@@ -185,9 +198,7 @@ export class ContextService {
     }
 
     if (job.status === "skipped") {
-      await this.store.failContextRequest(accepted.request.id, "internal_error", job.reason, {
-        refundCredits: true,
-      });
+      await this.store.failContextRequest(accepted.request.id, "internal_error", job.reason);
       throw new ApiError(500, "internal_error", "Context worker skipped the request.");
     }
 

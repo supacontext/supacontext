@@ -20,15 +20,32 @@ export const supacontextTool = {
         type: "string",
         description: "The research question or context request.",
       },
-      depth: {
+      effort: {
         type: "string",
-        enum: ["fast", "standard", "thorough", "deep"],
+        enum: ["low", "medium", "high", "x_high", "auto"],
+        description: "Research effort. Auto chooses the least expensive suitable level.",
+      },
+      max_credits: {
+        type: "number",
+        description: "Optional per-request credit cap.",
       },
       platforms: {
         type: "array",
         items: {
           type: "string",
-          enum: ["web", "reddit", "x", "youtube"],
+          enum: [
+            "web",
+            "reddit",
+            "x",
+            "youtube",
+            "facebook",
+            "news",
+            "forums",
+            "places",
+            "linkedin",
+            "hackernews",
+            "github",
+          ],
         },
       },
     },
@@ -37,7 +54,20 @@ export const supacontextTool = {
   },
   execute: async (input: {
     query: string;
-    depth?: "fast" | "standard" | "thorough" | "deep";
-    platforms?: Array<"web" | "reddit" | "x" | "youtube">;
+    effort?: "low" | "medium" | "high" | "x_high" | "auto";
+    max_credits?: number;
+    platforms?: Array<
+      | "web"
+      | "reddit"
+      | "x"
+      | "youtube"
+      | "facebook"
+      | "news"
+      | "forums"
+      | "places"
+      | "linkedin"
+      | "hackernews"
+      | "github"
+    >;
   }) => getSupaContext().context.create(input),
 };

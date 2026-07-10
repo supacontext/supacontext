@@ -5,7 +5,7 @@ import type { CreditBalanceRow, UsageLedgerRow } from "./types.js";
 export type InsertUsageLedgerInput = {
   workspaceId: string;
   eventType: LedgerEventType;
-  credits: number;
+  creditMicrocredits: bigint;
   contextRequestId?: string;
   idempotencyKey?: string;
   metadata?: postgres.JSONValue;
@@ -23,7 +23,7 @@ export class DuplicateUsageLedgerEntryError extends Error {
 
 export class InsufficientCreditsError extends Error {
   constructor(readonly workspaceId: string) {
-    super("Insufficient credits for usage ledger debit.");
+    super("Insufficient credits for usage ledger reservation.");
     this.name = "InsufficientCreditsError";
   }
 }
@@ -58,28 +58,39 @@ export async function getCreditBalance(
   sql: postgres.Sql,
   workspaceId: string,
 ): Promise<CreditBalanceRow | null> {
-  const rows = await sql<CreditBalanceRow[]>`
-    select workspace_id, balance, updated_at
+  const rows = await sql<
+    Array<{ workspace_id: string; balance_microcredits: string; updated_at: Date }>
+  >`
+    select workspace_id, balance_microcredits::text, updated_at
     from credit_balances
     where workspace_id = ${workspaceId}
     limit 1
   `;
 
-  return rows[0] ?? null;
+  const row = rows[0];
+
+  return row
+    ? {
+        ...row,
+        balance_microcredits: BigInt(row.balance_microcredits),
+      }
+    : null;
 }
 
 export async function insertUsageLedgerEntry(
   sql: postgres.Sql,
   input: InsertUsageLedgerInput,
 ): Promise<UsageLedgerRow> {
-  let rows: UsageLedgerRow[];
+  let rows: Array<Omit<UsageLedgerRow, "credit_microcredits"> & { credit_microcredits: string }>;
 
   try {
-    rows = await sql<UsageLedgerRow[]>`
+    rows = await sql<
+      Array<Omit<UsageLedgerRow, "credit_microcredits"> & { credit_microcredits: string }>
+    >`
       insert into usage_ledger (
         workspace_id,
         event_type,
-        credits,
+        credit_microcredits,
         context_request_id,
         idempotency_key,
         metadata
@@ -87,12 +98,19 @@ export async function insertUsageLedgerEntry(
       values (
         ${input.workspaceId},
         ${input.eventType},
-        ${input.credits},
+        ${input.creditMicrocredits.toString()},
         ${input.contextRequestId ?? null},
         ${input.idempotencyKey ?? null},
         ${sql.json(input.metadata ?? {})}
       )
-      returning id, workspace_id, event_type, credits, context_request_id, idempotency_key, created_at
+      returning
+        id,
+        workspace_id,
+        event_type,
+        credit_microcredits::text,
+        context_request_id,
+        idempotency_key,
+        created_at
     `;
   } catch (error) {
     if (input.idempotencyKey && isDuplicateIdempotencyError(error)) {
@@ -112,5 +130,8 @@ export async function insertUsageLedgerEntry(
     throw new Error("Failed to insert usage ledger entry.");
   }
 
-  return row;
+  return {
+    ...row,
+    credit_microcredits: BigInt(row.credit_microcredits),
+  };
 }

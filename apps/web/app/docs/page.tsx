@@ -1,7 +1,8 @@
 import { ArrowRight, BookOpen, Braces, KeyRound, RadioTower, Webhook } from "lucide-react";
 import Link from "next/link";
-import { DEPTH_CREDIT_COST } from "@supacontext/core";
+import { CONTEXT_EFFORTS, EFFORT_PROFILES, PLATFORMS } from "@supacontext/core";
 import { SiteHeader } from "../../components/site-header";
+import { formatEffort } from "../../lib/usage-formatting";
 
 const docs = [
   {
@@ -27,8 +28,8 @@ export default function DocsPage() {
           <p className="eyebrow">Docs</p>
           <h1>Integrate live public context with one endpoint.</h1>
           <p className="heroText">
-            Supacontext accepts a query, optional depth, and optional platform list. It returns
-            compact JSON with citations, gaps, and usage metadata.
+            Supacontext accepts a query, optional effort and credit cap, and optional platform list.
+            It returns compact structured JSON with citations, gaps, and usage metadata.
           </p>
         </section>
 
@@ -63,8 +64,8 @@ export default function DocsPage() {
             <RadioTower aria-hidden="true" size={22} />
             <h3>Platform selection</h3>
             <p className="mutedText">
-              Use web, reddit, x, youtube, or omit platforms to let the API use all supported
-              sources.
+              Choose from {PLATFORMS.join(", ")}, or omit platforms to let the research agent pick
+              relevant sources.
             </p>
           </article>
           <article className="card">
@@ -79,12 +80,16 @@ export default function DocsPage() {
 
         <section className="section">
           <article className="card">
-            <h2>Depth levels</h2>
+            <h2>Effort and request caps</h2>
+            <p className="mutedText">
+              Charges reflect actual provider operations and model tokens. Each effort has an
+              internal maximum; <code>max_credits</code> can set a lower request cap.
+            </p>
             <div className="rows">
-              {Object.entries(DEPTH_CREDIT_COST).map(([depth, credits]) => (
-                <div className="row" key={depth}>
-                  <span>{depth}</span>
-                  <strong>{credits} credits</strong>
+              {CONTEXT_EFFORTS.map((effort) => (
+                <div className="row" key={effort}>
+                  <span>{formatEffort(effort)}</span>
+                  <strong>{EFFORT_PROFILES[effort].maximumCredits.toString()} credit cap</strong>
                 </div>
               ))}
             </div>

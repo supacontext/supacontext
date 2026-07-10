@@ -5,7 +5,7 @@ export type ContextJobRunResult =
   | {
       id: string;
       status: "completed";
-      result: Omit<PublicContextResponse, "id" | "query" | "depth" | "status">;
+      result: Omit<PublicContextResponse, "id" | "query" | "effort" | "status">;
     }
   | {
       id: string;
@@ -74,5 +74,9 @@ export function mapWorkerFailureToApiError(error: { code: string; message: strin
     return new ApiError(404, "job_not_found", "Context job not found.");
   }
 
-  return new ApiError(502, "model_error", error.message);
+  if (error.code === "budget_exhausted") {
+    return new ApiError(402, "budget_exhausted", error.message);
+  }
+
+  return new ApiError(502, "model_error", "The research model could not compile context.");
 }

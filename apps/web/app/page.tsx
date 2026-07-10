@@ -14,15 +14,12 @@ import { SourcesSection } from "../components/sources-section";
 
 const sourceLogos = [
   { name: "Web", logoClass: "webSourceLogo" },
-  { name: "Instagram", logoClass: "instagramSourceLogo" },
   { name: "Reddit", logoClass: "redditSourceLogo" },
   { name: "LinkedIn", logoClass: "linkedinSourceLogo" },
   { name: "Maps", logoClass: "mapsSourceLogo" },
-  { name: "TikTok", logoClass: "tiktokSourceLogo" },
   { name: "X / Twitter", logoClass: "xSourceLogo" },
   { name: "News", logoClass: "newsSourceLogo" },
   { name: "Hacker News", logoClass: "hackerNewsSourceLogo" },
-  { name: "Product Hunt", logoClass: "productHuntSourceLogo" },
   { name: "YouTube", logoClass: "youtubeSourceLogo" },
   { name: "Forums", logoClass: "forumsSourceLogo" },
   { name: "Facebook", logoClass: "facebookSourceLogo" },

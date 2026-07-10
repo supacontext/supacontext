@@ -1,37 +1,44 @@
 import { describe, expect, it } from "vitest";
-import type { ContextDepth, Platform, PlatformMode } from "@supacontext/core";
+import {
+  CREDIT_MICROS,
+  priceModelTokensMicrocredits,
+  priceToolOperationMicrocredits,
+  type ResolvedEffort,
+} from "@supacontext/core";
 import {
   createMockProviderClients,
+  NormalizedProviderError,
   type DeepSeekClient,
   type DeepSeekRepairInput,
   type DeepSeekResearchInput,
   type DeepSeekResult,
   type ExaClient,
   type FetchContentInput,
-  type FetchLayerClient,
-  NormalizedProviderError,
   type NormalizedSourceCandidate,
   type ProviderCallLogInput,
   type ProviderClients,
-  type RerankInput,
-  type RerankResult,
-  type SearchInput,
-  type SupadataClient,
-  type TranscriptFetchInput,
-  type VoyageClient,
+  type ProviderResult,
   type WebSearchInput,
-  type XFetchInput,
-  type XquikClient,
 } from "@supacontext/providers";
-import { RESEARCH_UNIT_BUDGET } from "../budget.js";
-import { chunkSources, normalizeCandidates } from "../content.js";
-import { ResearchPipeline } from "../pipeline.js";
+import { BudgetExhaustedError, ResearchBudget } from "../budget.js";
+import { ResearchPipeline, type PipelineRequest } from "../pipeline.js";
 import type { PublicContextResult } from "../public-result.js";
 import { ContextJobProcessor } from "../server.js";
-import type { WorkerClaimResult, WorkerContextRequest, WorkerStore } from "../store.js";
+import type {
+  BeginCostEventInput,
+  SettleCostEventInput,
+  WorkerClaimResult,
+  WorkerContextRequest,
+  WorkerStore,
+} from "../store.js";
 import type { WebhookPayload, WebhookSender } from "../webhook.js";
 
 const requestId = "ctx_test_worker";
+
+type CostEvent = BeginCostEventInput & {
+  status: "pending" | "settled" | "released" | "uncertain";
+  actualMicrocredits: bigint | null;
+};
 
 type InternalRequest = WorkerContextRequest & {
   result: PublicContextResult | null;
@@ -41,98 +48,133 @@ type InternalRequest = WorkerContextRequest & {
 
 class InMemoryWorkerStore implements WorkerStore {
   readonly providerLogs: ProviderCallLogInput[] = [];
-  private readonly requests = new Map<string, InternalRequest>();
+  readonly costEvents = new Map<string, CostEvent>();
+  readonly request: InternalRequest;
 
-  constructor(request: Partial<WorkerContextRequest> = {}) {
-    const stored: InternalRequest = {
-      id: request.id ?? requestId,
-      workspaceId: request.workspaceId ?? "workspace_1",
-      query: request.query ?? "context API market",
-      depth: request.depth ?? "standard",
-      platforms: request.platforms ?? ["web", "reddit", "x", "youtube"],
-      platformMode: request.platformMode ?? "auto",
-      status: request.status ?? "queued",
-      spentCredits: request.spentCredits ?? 20,
-      webhookUrl: request.webhookUrl ?? null,
+  constructor(input: Partial<WorkerContextRequest> = {}) {
+    this.request = {
+      id: input.id ?? requestId,
+      workspaceId: input.workspaceId ?? "workspace_1",
+      apiKeyId: input.apiKeyId ?? "key_1",
+      query: input.query ?? "Supacontext context API",
+      effort: input.effort ?? "low",
+      resolvedEffort: input.resolvedEffort ?? null,
+      maxResolvedEffort: input.maxResolvedEffort ?? "x_high",
+      platforms: input.platforms ?? ["web"],
+      platformMode: input.platformMode ?? "manual",
+      status: input.status ?? "queued",
+      effectiveCapMicrocredits: input.effectiveCapMicrocredits ?? 20n * CREDIT_MICROS,
+      committedMicrocredits: input.committedMicrocredits ?? 0n,
+      claimAttempt: input.claimAttempt ?? 0,
+      webhookUrl: input.webhookUrl ?? null,
       result: null,
       errorCode: null,
       errorMessage: null,
     };
-
-    this.requests.set(stored.id, stored);
   }
 
-  read(requestIdToRead = requestId): InternalRequest {
-    const request = this.requests.get(requestIdToRead);
-
-    if (!request) {
-      throw new Error("Missing request.");
-    }
-
-    return request;
+  get committed(): bigint {
+    return [...this.costEvents.values()].reduce((sum, event) => {
+      if (event.status === "released") {
+        return sum;
+      }
+      return sum + (event.actualMicrocredits ?? event.reservedMicrocredits);
+    }, 0n);
   }
 
-  async findRequest(requestIdToFind: string): Promise<WorkerContextRequest | null> {
-    return this.requests.get(requestIdToFind) ?? null;
+  async findRequest(id: string): Promise<WorkerContextRequest | null> {
+    return id === this.request.id ? this.withCommitted() : null;
   }
 
-  async claimRequest(requestIdToRun: string): Promise<WorkerClaimResult> {
-    const request = this.requests.get(requestIdToRun);
-
-    if (!request) {
-      return {
-        request: null,
-        claimed: false,
-      };
+  async claimRequest(id: string): Promise<WorkerClaimResult> {
+    if (id !== this.request.id) {
+      return { request: null, claimed: false };
     }
-
-    if (request.status === "queued") {
-      request.status = "running";
-
-      return {
-        request,
-        claimed: true,
-      };
+    if (this.request.status !== "queued") {
+      return { request: this.withCommitted(), claimed: false };
     }
+    this.request.status = "running";
+    this.request.claimAttempt += 1;
+    return { request: this.withCommitted(), claimed: true };
+  }
 
-    return {
-      request,
-      claimed: false,
-    };
+  async setResolvedEffort(id: string, effort: ResolvedEffort): Promise<void> {
+    if (id === this.request.id) {
+      this.request.resolvedEffort = effort;
+    }
+  }
+
+  async beginCostEvent(input: BeginCostEventInput): Promise<boolean> {
+    if (
+      input.requestId !== this.request.id ||
+      this.request.status !== "running" ||
+      this.costEvents.has(input.id) ||
+      this.committed + input.reservedMicrocredits > this.request.effectiveCapMicrocredits
+    ) {
+      return false;
+    }
+    this.costEvents.set(input.id, {
+      ...input,
+      status: "pending",
+      actualMicrocredits: null,
+    });
+    return true;
+  }
+
+  async settleCostEvent(input: SettleCostEventInput): Promise<void> {
+    const event = this.requireEvent(input.id);
+    if (event.status !== "pending") {
+      return;
+    }
+    if (input.actualMicrocredits > event.reservedMicrocredits) {
+      throw new Error("Actual cost exceeded authorization.");
+    }
+    event.status = "settled";
+    event.actualMicrocredits = input.actualMicrocredits;
+  }
+
+  async releaseCostEvent(id: string, _requestId: string): Promise<void> {
+    const event = this.requireEvent(id);
+    if (event.status === "pending") {
+      event.status = "released";
+      event.actualMicrocredits = 0n;
+    }
+  }
+
+  async markCostEventUncertain(id: string, _requestId: string): Promise<void> {
+    const event = this.requireEvent(id);
+    if (event.status === "pending") {
+      event.status = "uncertain";
+      event.actualMicrocredits = event.reservedMicrocredits;
+    }
   }
 
   async completeRequest(
-    requestIdToComplete: string,
+    id: string,
+    resolvedEffort: ResolvedEffort,
     result: PublicContextResult,
   ): Promise<WorkerContextRequest | null> {
-    const request = this.requests.get(requestIdToComplete);
-
-    if (!request) {
+    if (id !== this.request.id) {
       return null;
     }
-
-    request.status = "completed";
-    request.result = result;
-
-    return request;
+    this.request.status = "completed";
+    this.request.resolvedEffort = resolvedEffort;
+    this.request.result = result;
+    return this.withCommitted();
   }
 
   async failRequest(
-    requestIdToFail: string,
+    id: string,
     errorCode: string,
     errorMessage: string,
   ): Promise<WorkerContextRequest | null> {
-    const request = this.requests.get(requestIdToFail);
-
-    if (!request) {
+    if (id !== this.request.id) {
       return null;
     }
-
-    request.status = "failed";
-    request.errorCode = errorCode;
-    request.errorMessage = errorMessage;
-
-    return request;
+    this.request.status = "failed";
+    this.request.errorCode = errorCode;
+    this.request.errorMessage = errorMessage;
+    return this.withCommitted();
   }
 
   async saveProviderCallLog(input: ProviderCallLogInput): Promise<void> {
@@ -140,505 +182,433 @@ class InMemoryWorkerStore implements WorkerStore {
   }
 
   async close(): Promise<void> {}
+
+  private requireEvent(id: string): CostEvent {
+    const event = this.costEvents.get(id);
+    if (!event) {
+      throw new Error(`Missing cost event ${id}.`);
+    }
+    return event;
+  }
+
+  private withCommitted(): WorkerContextRequest {
+    return { ...this.request, committedMicrocredits: this.committed };
+  }
 }
 
 class CapturingWebhookSender implements WebhookSender {
   readonly payloads: Array<{ url: string; payload: WebhookPayload }> = [];
 
   async send(url: string, payload: WebhookPayload): Promise<void> {
-    this.payloads.push({
-      url,
-      payload,
-    });
+    this.payloads.push({ url, payload });
   }
 }
 
-class ScriptedDeepSeek implements DeepSeekClient {
-  readonly evidenceCalls: DeepSeekResearchInput["evidence"][] = [];
-
-  constructor(
-    private readonly researchOutput: string | ((input: DeepSeekResearchInput) => string) = "",
-    private readonly repairOutput: string | ((input: DeepSeekRepairInput) => string) = "",
-  ) {}
-
-  async research(input: DeepSeekResearchInput): Promise<DeepSeekResult> {
-    this.evidenceCalls.push(input.evidence);
-
-    return {
-      content:
-        typeof this.researchOutput === "function"
-          ? this.researchOutput(input)
-          : this.researchOutput || validModelJson(input.evidence),
-    };
+class InvalidDeepSeek implements DeepSeekClient {
+  async research(input: DeepSeekResearchInput): Promise<ProviderResult<DeepSeekResult>> {
+    return invalidModelResult(input.requestId, "research");
   }
 
-  async repairJson(input: DeepSeekRepairInput): Promise<DeepSeekResult> {
+  async repairJson(input: DeepSeekRepairInput): Promise<ProviderResult<DeepSeekResult>> {
+    return invalidModelResult(input.requestId, "repair_json");
+  }
+
+  async routeEffort(): Promise<ProviderResult<{ effort: ResolvedEffort }>> {
     return {
-      content:
-        typeof this.repairOutput === "function"
-          ? this.repairOutput(input)
-          : this.repairOutput || validModelJson(input.evidence, "Repaired answer"),
+      data: { effort: "low" },
+      usage: {
+        provider: "deepseek",
+        operation: "route_effort",
+        billableUnits: 1,
+        inputTokens: 10,
+        outputTokens: 5,
+      },
     };
   }
 }
 
-class ScriptedVoyage implements VoyageClient {
-  calls = 0;
+class MissingUsageDeepSeek implements DeepSeekClient {
+  constructor(private readonly delegate: DeepSeekClient) {}
 
-  constructor(private readonly results: RerankResult[] = []) {}
-
-  async rerank(_input: RerankInput): Promise<RerankResult[]> {
-    this.calls += 1;
-
-    return this.results;
-  }
-}
-
-class CountingFetchLayer implements FetchLayerClient {
-  searchCalls = 0;
-  fetchCalls = 0;
-
-  async searchReddit(input: SearchInput): Promise<NormalizedSourceCandidate[]> {
-    this.searchCalls += 1;
-
-    return [candidate("reddit", `Reddit evidence about ${input.query}`)];
-  }
-
-  async fetchRedditThread(input: {
-    candidate: NormalizedSourceCandidate;
-  }): Promise<NormalizedSourceCandidate> {
-    this.fetchCalls += 1;
-
+  async research(input: DeepSeekResearchInput): Promise<ProviderResult<DeepSeekResult>> {
+    const result = await this.delegate.research(input);
     return {
-      ...input.candidate,
-      content: `${input.candidate.content} with fetched thread comments.`,
+      data: result.data,
+      usage: { provider: "deepseek", operation: "research", billableUnits: 1 },
     };
   }
+
+  repairJson(input: DeepSeekRepairInput): Promise<ProviderResult<DeepSeekResult>> {
+    return this.delegate.repairJson(input);
+  }
+
+  routeEffort(input: Parameters<DeepSeekClient["routeEffort"]>[0]) {
+    return this.delegate.routeEffort(input);
+  }
 }
 
-class CountingExa implements ExaClient {
-  searchCalls: WebSearchInput[] = [];
-  fetchCalls = 0;
-
-  constructor(private readonly results: NormalizedSourceCandidate[] = []) {}
-
-  async search(input: WebSearchInput): Promise<NormalizedSourceCandidate[]> {
-    this.searchCalls.push(input);
-
-    if (this.results.length > 0) {
-      return this.results;
-    }
-
-    return Array.from({ length: input.limit }, (_, index) =>
-      candidate(input.platform, `${input.query} ${input.platform} evidence ${index + 1}`),
+class BillableFailureDeepSeek implements DeepSeekClient {
+  async research(_input: DeepSeekResearchInput): Promise<ProviderResult<DeepSeekResult>> {
+    throw new NormalizedProviderError(
+      "deepseek",
+      "EMPTY_MODEL_OUTPUT",
+      "DeepSeek returned empty output.",
+      200,
+      1,
+      120,
+      30,
+      150,
     );
   }
 
-  async fetchContent(input: FetchContentInput): Promise<NormalizedSourceCandidate[]> {
-    this.fetchCalls += 1;
-
-    return input.candidates.slice(0, input.limit);
-  }
-}
-
-class FailingExa implements ExaClient {
-  async search(_input: WebSearchInput): Promise<NormalizedSourceCandidate[]> {
-    throw new NormalizedProviderError("exa", "PROVIDER_HTTP_ERROR", "Exa failed.", 503);
+  async repairJson(input: DeepSeekRepairInput): Promise<ProviderResult<DeepSeekResult>> {
+    return invalidModelResult(input.requestId, "repair_json");
   }
 
-  async fetchContent(_input: FetchContentInput): Promise<NormalizedSourceCandidate[]> {
-    return [];
-  }
-}
-
-class CountingXquik implements XquikClient {
-  searchCalls = 0;
-  fetchCalls = 0;
-
-  async searchX(input: SearchInput): Promise<NormalizedSourceCandidate[]> {
-    this.searchCalls += 1;
-
-    return [candidate("x", `X evidence about ${input.query}`)];
-  }
-
-  async fetchXPost(input: XFetchInput): Promise<NormalizedSourceCandidate> {
-    this.fetchCalls += 1;
-
+  async routeEffort(): Promise<ProviderResult<{ effort: ResolvedEffort }>> {
     return {
-      ...input.candidate,
-      content: `${input.candidate.content} with fetched thread context.`,
-    };
-  }
-}
-
-class CountingSupadata implements SupadataClient {
-  transcriptCalls = 0;
-
-  async fetchTranscript(input: TranscriptFetchInput): Promise<NormalizedSourceCandidate> {
-    this.transcriptCalls += 1;
-
-    return candidate("youtube", `${input.title ?? "Video"} transcript evidence`, input.url);
-  }
-}
-
-function createProviders(
-  input: {
-    exa?: ExaClient;
-    fetchlayer?: FetchLayerClient;
-    xquik?: XquikClient;
-    supadata?: SupadataClient;
-    voyage?: VoyageClient;
-    deepseek?: DeepSeekClient;
-  } = {},
-): ProviderClients {
-  return {
-    exa: input.exa ?? new CountingExa(),
-    fetchlayer: input.fetchlayer ?? new CountingFetchLayer(),
-    xquik: input.xquik ?? new CountingXquik(),
-    supadata: input.supadata ?? new CountingSupadata(),
-    voyage: input.voyage ?? new ScriptedVoyage(),
-    deepseek: input.deepseek ?? new ScriptedDeepSeek(),
-  };
-}
-
-class BlockingPipeline extends ResearchPipeline {
-  calls = 0;
-  readonly started: Promise<void>;
-  private readonly unblock: Promise<void>;
-  private resolveStarted: () => void = () => {};
-  private releaseRun: () => void = () => {};
-
-  constructor(private readonly result: PublicContextResult) {
-    super(createProviders());
-    this.started = new Promise((resolve) => {
-      this.resolveStarted = resolve;
-    });
-    this.unblock = new Promise((resolve) => {
-      this.releaseRun = resolve;
-    });
-  }
-
-  release(): void {
-    this.releaseRun();
-  }
-
-  override async run(_request: Parameters<ResearchPipeline["run"]>[0]) {
-    this.calls += 1;
-    this.resolveStarted();
-    await this.unblock;
-
-    return {
-      result: this.result,
-      diagnostics: {
-        researchUnitsSpent: 1,
-        researchUnitLimit: 1,
+      data: { effort: "low" },
+      usage: {
+        provider: "deepseek",
+        operation: "route_effort",
+        billableUnits: 1,
+        inputTokens: 10,
+        outputTokens: 5,
       },
     };
   }
 }
 
-function candidate(platform: Platform, content: string, url?: string): NormalizedSourceCandidate {
-  return {
-    provider:
-      platform === "reddit"
-        ? "fetchlayer"
-        : platform === "x"
-          ? "xquik"
-          : platform === "youtube"
-            ? "supadata"
-            : "exa",
-    platform,
-    title: `${platform} source`,
-    url: url ?? `https://example.com/${platform}/${encodeURIComponent(content.slice(0, 16))}`,
-    publishedAt: "2026-06-01T00:00:00.000Z",
-    content,
-    summary: content.slice(0, 120),
-  };
+class BillableFailureExa implements ExaClient {
+  async search(_input: WebSearchInput): Promise<ProviderResult<NormalizedSourceCandidate[]>> {
+    throw new NormalizedProviderError(
+      "exa",
+      "UNUSABLE_RESPONSE",
+      "Exa returned unusable output.",
+      200,
+      1,
+    );
+  }
+
+  async fetchContent(
+    _input: FetchContentInput,
+  ): Promise<ProviderResult<NormalizedSourceCandidate[]>> {
+    return {
+      data: [],
+      usage: { provider: "exa", operation: "fetch-content", billableUnits: 0 },
+    };
+  }
 }
 
-function validModelJson(
-  evidence: DeepSeekResearchInput["evidence"],
-  answer = "Compiled answer",
-): string {
-  return JSON.stringify({
-    answer,
-    context_pack: evidence.slice(0, 2).map((item) => ({
-      claim: `Claim from ${item.title}`,
-      confidence: "high",
-      supporting_sources: [item.sourceId],
-    })),
-    sources: [],
-    gaps: [],
-  });
-}
-
-function pipelineRequest(
-  input: {
-    depth?: ContextDepth;
-    platforms?: Platform[];
-    platformMode?: PlatformMode;
-    query?: string;
-  } = {},
-) {
+function invalidModelResult(_requestId: string, operation: string): ProviderResult<DeepSeekResult> {
   return {
-    id: requestId,
-    workspaceId: "workspace_1",
-    query: input.query ?? "context API market",
-    depth: input.depth ?? "standard",
-    platforms: input.platforms ?? ["web", "reddit", "x", "youtube"],
-    platformMode: input.platformMode ?? "auto",
-    creditsCharged: input.depth === "fast" ? 5 : 20,
-  };
-}
-
-function completedPublicResult(): PublicContextResult {
-  return {
-    answer: "Compiled answer",
-    context_pack: [
-      {
-        claim: "A source supports this answer.",
-        confidence: "high",
-        supporting_sources: ["src_1"],
-      },
-    ],
-    sources: [
-      {
-        id: "src_1",
-        platform: "web",
-        title: "Web source",
-        url: "https://example.com/source",
-        published_at: null,
-        summary: "Useful web evidence.",
-      },
-    ],
-    gaps: [],
+    data: { content: "not valid json" },
     usage: {
-      credits_charged: 20,
-      depth: "standard",
-      platforms_used: ["web"],
-      sources_considered: 1,
-      sources_used: 1,
-      cached: false,
+      provider: "deepseek",
+      operation,
+      billableUnits: 1,
+      inputTokens: 100,
+      outputTokens: 20,
     },
   };
 }
 
-describe("research worker pipeline", () => {
-  it("obeys manual platform restrictions", async () => {
-    const exa = new CountingExa();
-    const fetchlayer = new CountingFetchLayer();
-    const xquik = new CountingXquik();
-    const supadata = new CountingSupadata();
-    const pipeline = new ResearchPipeline(createProviders({ exa, fetchlayer, xquik, supadata }));
+function providersFor(store: InMemoryWorkerStore, deepseek?: DeepSeekClient): ProviderClients {
+  const clients = createMockProviderClients((input) => store.saveProviderCallLog(input));
+  return deepseek ? { ...clients, deepseek } : clients;
+}
 
-    const run = await pipeline.run(
-      pipelineRequest({
-        platforms: ["reddit"],
-        platformMode: "manual",
-      }),
-    );
+function pipelineRequest(input: Partial<PipelineRequest> = {}): PipelineRequest {
+  return {
+    id: input.id ?? requestId,
+    workspaceId: input.workspaceId ?? "workspace_1",
+    query: input.query ?? "Supacontext context API",
+    effort: input.effort ?? "low",
+    maxResolvedEffort: input.maxResolvedEffort ?? "x_high",
+    platforms: input.platforms ?? ["web"],
+    platformMode: input.platformMode ?? "manual",
+    effectiveCapMicrocredits: input.effectiveCapMicrocredits ?? 20n * CREDIT_MICROS,
+    committedMicrocredits: input.committedMicrocredits ?? 0n,
+    claimAttempt: input.claimAttempt ?? 1,
+  };
+}
 
-    expect(fetchlayer.searchCalls).toBe(1);
-    expect(exa.searchCalls).toHaveLength(0);
-    expect(xquik.searchCalls).toBe(0);
-    expect(supadata.transcriptCalls).toBe(0);
-    expect(run.result.sources.every((source) => source.platform === "reddit")).toBe(true);
-  });
+async function runningStore(input: Partial<WorkerContextRequest> = {}) {
+  const store = new InMemoryWorkerStore(input);
+  await store.claimRequest(store.request.id);
+  return store;
+}
 
-  it("keeps internal research unit spending within the depth budget", async () => {
-    const pipeline = new ResearchPipeline(createProviders());
-    const run = await pipeline.run(
-      pipelineRequest({
-        depth: "fast",
-      }),
-    );
-
-    expect(run.diagnostics.researchUnitsSpent).toBeLessThanOrEqual(RESEARCH_UNIT_BUDGET.fast);
-  });
-
-  it("chunks large YouTube transcripts while preserving timestamps", () => {
-    const source = normalizeCandidates([
-      {
-        provider: "supadata",
-        platform: "youtube",
-        title: "Long video",
-        url: "https://www.youtube.com/watch?v=long",
-        publishedAt: "2026-06-01T00:00:00.000Z",
-        content: Array.from(
-          { length: 20 },
-          (_, index) => `segment ${index} transcript text repeated repeated repeated`,
-        ).join("\n"),
-        summary: "Long transcript",
-        metadata: {
-          transcriptSegments: Array.from({ length: 20 }, (_, index) => ({
-            text: `segment ${index} transcript text repeated repeated repeated`,
-            startSeconds: index * 10,
-            endSeconds: index * 10 + 8,
-          })),
-        },
-      },
-    ]);
-
-    const chunks = chunkSources(source, {
-      directTokenLimit: 10,
-      chunkTokenLimit: 35,
+describe("durable research budget", () => {
+  it("preauthorizes maximum cost and settles to actual tool units", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: 10n * CREDIT_MICROS });
+    const budget = new ResearchBudget(requestId, 1, 10n * CREDIT_MICROS, 0n, store);
+    const authorization = await budget.authorizeTool({
+      operation: "exa.fetch-content",
+      provider: "exa",
+      platform: "web",
+      maximumUnits: 5n,
     });
 
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0]?.startSeconds).toBe(0);
-    expect(chunks.at(-1)?.endSeconds).toBe(198);
+    expect(authorization?.reservedMicrocredits).toBe(5n * CREDIT_MICROS);
+    expect(budget.remaining).toBe(5n * CREDIT_MICROS);
+    await budget.settleTool(authorization!, "exa.fetch-content", 2);
+    expect(budget.spent).toBe(2n * CREDIT_MICROS);
+    expect(store.committed).toBe(2n * CREDIT_MICROS);
   });
 
-  it("uses Voyage reranking for large chunk sets and sends selected chunks to synthesis", async () => {
-    const largeContent = Array.from({ length: 28 }, (_, index) =>
-      index === 16
-        ? "target-ranked paragraph with context API buyer evidence and strong relevance. ".repeat(
-            18,
-          )
-        : `ordinary paragraph ${index} with context API background and filler details. `.repeat(18),
-    ).join("\n\n");
-    const deepseek = new ScriptedDeepSeek((input) => validModelJson(input.evidence));
-    const voyage = new ScriptedVoyage([{ id: "chunk_src_1_17", score: 1 }]);
-    const pipeline = new ResearchPipeline(
-      createProviders({
-        exa: new CountingExa([candidate("web", largeContent)]),
-        voyage,
-        deepseek,
+  it("refuses work that cannot fit and charges the maximum when token usage is delayed", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: 2n * CREDIT_MICROS });
+    const budget = new ResearchBudget(requestId, 1, 2n * CREDIT_MICROS, 0n, store);
+    expect(
+      await budget.authorizeTool({
+        operation: "exa.search",
+        provider: "exa",
+        platform: "web",
       }),
+    ).toBeNull();
+
+    const maximumInputTokens = 1_000;
+    const maximumOutputTokens = 500;
+    const modelMaximum = priceModelTokensMicrocredits(
+      "deepseek-v4-flash",
+      BigInt(maximumInputTokens),
+      BigInt(maximumOutputTokens),
     );
-
-    await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
-
-    expect(voyage.calls).toBe(1);
-    expect(deepseek.evidenceCalls[0]?.[0]?.excerpt).toContain("target-ranked");
-  });
-
-  it("repairs invalid model JSON once before saving the result", async () => {
-    const deepseek = new ScriptedDeepSeek("not json", (_input) =>
-      JSON.stringify({
-        answer: "Repaired answer",
-        context_pack: [
-          {
-            claim: "Repaired claim",
-            confidence: "medium",
-            supporting_sources: ["src_1"],
-          },
-        ],
-        sources: [],
-        gaps: [],
-      }),
-    );
-    const pipeline = new ResearchPipeline(createProviders({ deepseek }));
-
-    const run = await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
-
-    expect(run.result.answer).toBe("Repaired answer");
-    expect(run.result.context_pack[0]?.claim).toBe("Repaired claim");
-  });
-
-  it("normalizes provider failures into public gaps", async () => {
-    const pipeline = new ResearchPipeline(
-      createProviders({
-        exa: new FailingExa(),
-      }),
-    );
-
-    const run = await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
-
-    expect(run.result.sources).toEqual([]);
-    expect(run.result.gaps).toContain(
-      "web provider was unavailable or returned no normalized evidence.",
-    );
-  });
-
-  it("marks a job failed when model JSON remains invalid", async () => {
-    const store = new InMemoryWorkerStore({
-      platforms: ["web"],
-      platformMode: "manual",
+    const modelAuthorization = await budget.authorizeModel({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      maximumInputTokens,
+      maximumOutputTokens,
+      operation: "research-synthesis",
     });
-    const processor = new ContextJobProcessor(
-      store,
-      new ResearchPipeline(
-        createProviders({
-          deepseek: new ScriptedDeepSeek("not json", "still not json"),
-        }),
+    expect(modelAuthorization).not.toBeNull();
+    await budget.settleModel(modelAuthorization!, "deepseek-v4-flash", undefined, undefined);
+    expect(store.committed).toBe(modelMaximum);
+    expect([...store.costEvents.values()][0]?.status).toBe("uncertain");
+  });
+
+  it("never allows settlement above the preauthorized amount", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: CREDIT_MICROS });
+    const budget = new ResearchBudget(requestId, 1, CREDIT_MICROS, 0n, store);
+    const authorization = await budget.authorizeTool({
+      operation: "github.repository",
+      provider: "github",
+      platform: "github",
+    });
+
+    await expect(budget.settleTool(authorization!, "github.repository", 5)).rejects.toThrow(
+      "preauthorized",
+    );
+    expect([...store.costEvents.values()][0]?.status).toBe("uncertain");
+  });
+});
+
+describe("lazy, effort-aware research pipeline", () => {
+  it("loads and calls only manually selected platform operations", async () => {
+    const store = await runningStore({
+      platforms: ["github"],
+      effectiveCapMicrocredits: 20n * CREDIT_MICROS,
+    });
+    const pipeline = new ResearchPipeline(providersFor(store), store);
+    const run = await pipeline.run(
+      pipelineRequest({ platforms: ["github"], effectiveCapMicrocredits: 20n * CREDIT_MICROS }),
+    );
+
+    expect(run.diagnostics.loadedPlatforms).toEqual(["github"]);
+    expect(store.providerLogs.some((log) => log.provider === "github")).toBe(true);
+    expect(store.providerLogs.some((log) => log.provider === "exa")).toBe(false);
+    expect(run.result.sources.every((source) => source.platform === "github")).toBe(true);
+  });
+
+  it("charges the Groq Auto router and clamps its choice to the API key maximum", async () => {
+    const store = await runningStore({
+      effort: "auto",
+      maxResolvedEffort: "medium",
+      effectiveCapMicrocredits: 50n * CREDIT_MICROS,
+      query: "Exhaustive research across everything",
+    });
+    const pipeline = new ResearchPipeline(providersFor(store), store);
+    const run = await pipeline.run(
+      pipelineRequest({
+        effort: "auto",
+        maxResolvedEffort: "medium",
+        query: "Exhaustive research across everything",
+        platforms: ["web"],
+        platformMode: "auto",
+        effectiveCapMicrocredits: 50n * CREDIT_MICROS,
+      }),
+    );
+
+    expect(run.resolvedEffort).toBe("medium");
+    expect(store.providerLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "groq", operation: "route_effort" }),
+      ]),
+    );
+    expect(
+      [...store.costEvents.values()].some(
+        (event) => event.provider === "groq" && event.operation === "effort-router",
       ),
-      new CapturingWebhookSender(),
-    );
-
-    const response = await processor.process(requestId);
-
-    expect(response.status).toBe("failed");
-    expect(store.read().status).toBe("failed");
-    expect(store.read().errorCode).toBe("invalid_model_output");
+    ).toBe(true);
   });
 
-  it("sends completed webhook payloads with id, status, and final result", async () => {
+  it("downgrades Auto when the routed effort cannot fit the remaining reservation", async () => {
+    const store = await runningStore({
+      effort: "auto",
+      maxResolvedEffort: "x_high",
+      effectiveCapMicrocredits: 12n * CREDIT_MICROS,
+      query: "Exhaustive research across everything",
+    });
+    const run = await new ResearchPipeline(providersFor(store), store).run(
+      pipelineRequest({
+        effort: "auto",
+        maxResolvedEffort: "x_high",
+        query: "Exhaustive research across everything",
+        platforms: ["web"],
+        platformMode: "auto",
+        effectiveCapMicrocredits: 12n * CREDIT_MICROS,
+      }),
+    );
+
+    expect(run.resolvedEffort).toBe("medium");
+    expect(run.diagnostics.creditMicrocreditsSpent).toBeLessThanOrEqual(12n * CREDIT_MICROS);
+  });
+
+  it("settles model calls from provider-reported token counts", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: 20n * CREDIT_MICROS });
+    const pipeline = new ResearchPipeline(providersFor(store), store);
+    const run = await pipeline.run(pipelineRequest());
+    const modelEvents = [...store.costEvents.values()].filter(
+      (event) => event.provider === "deepseek",
+    );
+
+    expect(modelEvents).not.toHaveLength(0);
+    expect(modelEvents.every((event) => event.status === "settled")).toBe(true);
+    expect(run.diagnostics.creditMicrocreditsSpent).toBe(store.committed);
+    expect(run.result.usage.credits_charged).toBe(Number(store.committed) / Number(CREDIT_MICROS));
+  });
+
+  it("keeps the model maximum charged when usage reporting is missing", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: 20n * CREDIT_MICROS });
+    const base = createMockProviderClients();
+    const providers = providersFor(store, new MissingUsageDeepSeek(base.deepseek));
+    const run = await new ResearchPipeline(providers, store).run(pipelineRequest());
+    const modelEvent = [...store.costEvents.values()].find(
+      (event) => event.provider === "deepseek",
+    );
+
+    expect(modelEvent?.status).toBe("uncertain");
+    expect(modelEvent?.actualMicrocredits).toBe(modelEvent?.reservedMicrocredits);
+    expect(run.diagnostics.creditMicrocreditsSpent).toBeLessThanOrEqual(20n * CREDIT_MICROS);
+  });
+
+  it("charges preserved units for a paid 2xx tool response that cannot be normalized", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: 20n * CREDIT_MICROS });
+    const providers = providersFor(store);
+    providers.exa = new BillableFailureExa();
+    await new ResearchPipeline(providers, store).run(pipelineRequest());
+    const exaEvent = [...store.costEvents.values()].find(
+      (event) => event.operation === "exa.search",
+    );
+
+    expect(exaEvent?.status).toBe("settled");
+    expect(exaEvent?.actualMicrocredits).toBe(7n * CREDIT_MICROS);
+  });
+
+  it("fails before provider work when the reservation cannot fund synthesis", async () => {
+    const store = await runningStore({ effectiveCapMicrocredits: 100_000n });
+    const pipeline = new ResearchPipeline(providersFor(store), store);
+
+    await expect(
+      pipeline.run(pipelineRequest({ effectiveCapMicrocredits: 100_000n })),
+    ).rejects.toBeInstanceOf(BudgetExhaustedError);
+    expect(store.providerLogs).toHaveLength(0);
+    expect(store.committed).toBe(0n);
+  });
+});
+
+describe("worker job lifecycle", () => {
+  it("persists a completed result and sends the public webhook payload", async () => {
     const store = new InMemoryWorkerStore({
       webhookUrl: "https://example.com/webhook",
-      platforms: ["web"],
-      platformMode: "manual",
+      platforms: ["github"],
     });
     const webhooks = new CapturingWebhookSender();
     const processor = new ContextJobProcessor(
       store,
-      new ResearchPipeline(createProviders()),
+      new ResearchPipeline(providersFor(store), store),
       webhooks,
     );
-
     const response = await processor.process(requestId);
 
     expect(response.status).toBe("completed");
-    expect(webhooks.payloads).toHaveLength(1);
-    expect(webhooks.payloads[0]).toMatchObject({
-      url: "https://example.com/webhook",
-      payload: {
-        id: requestId,
-        status: "completed",
-        result: {
-          usage: {
-            credits_charged: 20,
-          },
-        },
-      },
-    });
+    expect(store.request.status).toBe("completed");
+    expect(store.request.result?.sources[0]?.platform).toBe("github");
+    expect(webhooks.payloads).toEqual([
+      expect.objectContaining({
+        url: "https://example.com/webhook",
+        payload: expect.objectContaining({ id: requestId, status: "completed" }),
+      }),
+    ]);
   });
 
-  it("skips duplicate deliveries while a job is already running", async () => {
-    const store = new InMemoryWorkerStore({
-      platforms: ["web"],
-      platformMode: "manual",
-    });
-    const pipeline = new BlockingPipeline(completedPublicResult());
-    const processor = new ContextJobProcessor(store, pipeline, new CapturingWebhookSender());
+  it("settles consumed work and reports invalid model output after one repair", async () => {
+    const store = new InMemoryWorkerStore();
+    const processor = new ContextJobProcessor(
+      store,
+      new ResearchPipeline(providersFor(store, new InvalidDeepSeek()), store),
+      new CapturingWebhookSender(),
+    );
+    const response = await processor.process(requestId);
 
-    const first = processor.process(requestId);
-    await pipeline.started;
-    const duplicate = await processor.process(requestId);
+    expect(response.status).toBe("failed");
+    expect(response).toMatchObject({ error: { code: "invalid_model_output" } });
+    expect(store.request.status).toBe("failed");
+    expect(store.committed).toBeGreaterThan(0n);
+    expect(store.committed).toBeLessThanOrEqual(store.request.effectiveCapMicrocredits);
+  });
 
-    pipeline.release();
-    const completed = await first;
+  it("charges preserved token usage when a paid 2xx model response is unusable", async () => {
+    const store = new InMemoryWorkerStore();
+    const processor = new ContextJobProcessor(
+      store,
+      new ResearchPipeline(providersFor(store, new BillableFailureDeepSeek()), store),
+      new CapturingWebhookSender(),
+    );
+    const response = await processor.process(requestId);
+    const modelEvent = [...store.costEvents.values()].find(
+      (event) => event.provider === "deepseek",
+    );
 
-    expect(duplicate).toEqual({
+    expect(response).toMatchObject({ status: "failed", error: { code: "provider_error" } });
+    expect(modelEvent?.status).toBe("settled");
+    expect(modelEvent?.actualMicrocredits).toBe(
+      priceModelTokensMicrocredits("deepseek-v4-flash", 120n, 30n),
+    );
+  });
+
+  it("skips a duplicate delivery while the first claim is running", async () => {
+    const store = new InMemoryWorkerStore({ status: "running", claimAttempt: 1 });
+    const processor = new ContextJobProcessor(
+      store,
+      new ResearchPipeline(providersFor(store), store),
+      new CapturingWebhookSender(),
+    );
+    const response = await processor.process(requestId);
+
+    expect(response).toEqual({
       id: requestId,
       status: "skipped",
       reason: "Context request is already running.",
     });
-    expect(completed.status).toBe("completed");
-    expect(pipeline.calls).toBe(1);
+    expect(store.providerLogs).toHaveLength(0);
   });
+});
 
-  it("provider mocks emit provider call logs without raw payloads", async () => {
-    const logs: ProviderCallLogInput[] = [];
-    const pipeline = new ResearchPipeline(
-      createMockProviderClients((input) => {
-        logs.push(input);
-      }),
-    );
-
-    await pipeline.run(pipelineRequest({ platforms: ["web"], platformMode: "manual" }));
-
-    expect(logs.length).toBeGreaterThan(0);
-    expect(logs.every((log) => "provider" in log && !("response" in log))).toBe(true);
+describe("free upstream operation floors", () => {
+  it("keeps GitHub and Hacker News calls deliberately nonzero", () => {
+    expect(priceToolOperationMicrocredits("github.user")).toBe(250_000n);
+    expect(priceToolOperationMicrocredits("hacker_news_algolia.item")).toBe(250_000n);
   });
 });

@@ -8,6 +8,7 @@ import {
   type ProviderClients,
 } from "@supacontext/providers";
 import { z } from "zod";
+import { BudgetExhaustedError } from "./budget.js";
 import { ResearchPipeline } from "./pipeline.js";
 import type { PublicContextResult } from "./public-result.js";
 import { verifyInternalToken, verifyQstashSignature } from "./qstash-signature.js";
@@ -73,19 +74,26 @@ export function buildServer(
   const providers =
     dependencies.providers ??
     createProviderClients({
+      mode: env.NODE_ENV === "production" ? "real" : "auto",
       env: {
         nodeEnv: env.NODE_ENV,
         exaApiKey: env.EXA_API_KEY,
         fetchLayerApiKey: env.FETCHLAYER_API_KEY,
-        xquikApiKey: env.XQUIK_API_KEY,
+        apiDirectApiKey: env.API_DIRECT_API_KEY,
         supadataApiKey: env.SUPADATA_API_KEY,
+        githubPat: env.GITHUB_TOKEN,
         deepseekApiKey: env.DEEPSEEK_API_KEY,
+        groqApiKey: env.GROQ_API_KEY,
         voyageApiKey: env.VOYAGE_API_KEY,
       },
       logger: (input) => store.saveProviderCallLog(input),
     });
   const webhookSender = dependencies.webhookSender ?? new HttpWebhookSender();
-  const processor = new ContextJobProcessor(store, new ResearchPipeline(providers), webhookSender);
+  const processor = new ContextJobProcessor(
+    store,
+    new ResearchPipeline(providers, store),
+    webhookSender,
+  );
   const server = Fastify({
     bodyLimit: 64 * 1024,
     logger: {
@@ -236,7 +244,7 @@ export class ContextJobProcessor {
 
     try {
       const run = await this.pipeline.run(requestToPipelineInput(request));
-      await this.store.completeRequest(request.id, run.result);
+      await this.store.completeRequest(request.id, run.resolvedEffort, run.result);
       await this.sendWebhook(request, {
         id: request.id,
         status: "completed",
@@ -285,14 +293,24 @@ function requestToPipelineInput(
     id: request.id,
     workspaceId: request.workspaceId,
     query: request.query,
-    depth: request.depth,
+    effort: request.effort,
+    maxResolvedEffort: request.maxResolvedEffort,
     platforms: request.platforms,
     platformMode: request.platformMode,
-    creditsCharged: request.spentCredits,
+    effectiveCapMicrocredits: request.effectiveCapMicrocredits,
+    committedMicrocredits: request.committedMicrocredits,
+    claimAttempt: request.claimAttempt,
   };
 }
 
 function normalizeJobFailure(error: unknown): { code: string; message: string } {
+  if (error instanceof BudgetExhaustedError) {
+    return {
+      code: "budget_exhausted",
+      message: error.message,
+    };
+  }
+
   if (error instanceof NormalizedProviderError) {
     return {
       code: "provider_error",
@@ -309,6 +327,6 @@ function normalizeJobFailure(error: unknown): { code: string; message: string } 
 
   return {
     code: "model_error",
-    message: error instanceof Error ? error.message : "Context job failed.",
+    message: "Context compilation failed.",
   };
 }

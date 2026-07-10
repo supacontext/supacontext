@@ -1,17 +1,11 @@
 # Supacontext
 
-Developer API for giving AI agents compact, cited, up-to-date public context from web, Reddit, X, and YouTube.
+Developer API for giving AI agents compact, cited, up-to-date public context.
 
-This is not a raw search API, scraper, or data dump product. Public responses must return structured JSON context, not raw provider output.
-
-Core product shape:
-
-- One main context API.
-- JSON output only.
-- Sources: web, Reddit, X, YouTube.
-- Depths: Fast, Standard, Thorough, Deep.
-- Credit-based subscription pricing.
-- Dashboard for keys, usage, playground, and billing.
+The main context API returns structured JSON rather than raw provider output. It supports web,
+Reddit, X, YouTube, Facebook, News, Forums, Places, LinkedIn, Hacker News, and GitHub. Requests use
+Low, Medium, High, X High, or Auto effort. Supacontext reserves credits before paid work, charges
+actual provider and model usage, and releases unused credits after settlement.
 
 ## 1. Think Before Coding
 

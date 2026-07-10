@@ -12,8 +12,9 @@ const supacontext = createSupaContext({
 const created = await supacontext.context.create(
   {
     query: "What changed in AI agent tooling this week?",
-    depth: "standard",
-    platforms: ["web", "reddit", "youtube"],
+    effort: "auto",
+    max_credits: 50,
+    platforms: ["web", "reddit", "youtube", "github", "hackernews"],
     async: true,
   },
   {

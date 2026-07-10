@@ -1,7 +1,15 @@
-import type { Platform } from "@supacontext/core";
+import type { ContextEffort, Platform } from "@supacontext/core";
 
 export function formatCredits(credits: number): string {
-  return `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`;
+  const value = credits.toLocaleString("en-US", {
+    maximumFractionDigits: 6,
+  });
+
+  return `${value} ${credits === 1 ? "credit" : "credits"}`;
+}
+
+export function formatEffort(effort: ContextEffort): string {
+  return effort === "x_high" ? "X High" : effort.charAt(0).toUpperCase() + effort.slice(1);
 }
 
 export function formatMoney(cents: number): string {

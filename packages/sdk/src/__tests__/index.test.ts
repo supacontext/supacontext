@@ -22,7 +22,7 @@ describe("Supacontext SDK", () => {
         return jsonResponse({
           id: "ctx_1",
           status: "queued",
-          credits_charged: 20,
+          credits_reserved: 42.5,
         });
       },
     });
@@ -30,6 +30,9 @@ describe("Supacontext SDK", () => {
     const response = await client.context.create(
       {
         query: "agent context APIs",
+        effort: "high",
+        max_credits: 42.5,
+        platforms: ["github", "hackernews"],
         async: true,
       },
       {
@@ -40,11 +43,18 @@ describe("Supacontext SDK", () => {
     expect(response).toEqual({
       id: "ctx_1",
       status: "queued",
-      credits_charged: 20,
+      credits_reserved: 42.5,
     });
     expect(calls[0]?.url).toBe("https://api.example.test/v1/context");
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk_sc_test");
     expect(calls[0]?.headers.get("idempotency-key")).toBe("idem_1");
+    await expect(calls[0]?.json()).resolves.toEqual({
+      query: "agent context APIs",
+      effort: "high",
+      max_credits: 42.5,
+      platforms: ["github", "hackernews"],
+      async: true,
+    });
   });
 
   it("polls until a request reaches a terminal status", async () => {
@@ -58,15 +68,18 @@ describe("Supacontext SDK", () => {
         return jsonResponse({
           id: "ctx_1",
           query: "agent context APIs",
-          depth: "standard",
+          effort: "auto",
+          resolved_effort: "medium",
           status: calls === 1 ? "running" : "completed",
           answer: calls === 1 ? null : "Done",
           context_pack: [],
           sources: [],
           gaps: [],
           usage: {
-            credits_charged: 20,
-            depth: "standard",
+            credits_charged: calls === 1 ? 0 : 8.25,
+            credits_reserved: 20,
+            effort: "auto",
+            resolved_effort: "medium",
             platforms_used: ["web"],
             sources_considered: 0,
             sources_used: 0,
@@ -83,6 +96,12 @@ describe("Supacontext SDK", () => {
 
     expect(calls).toBe(2);
     expect(response.status).toBe("completed");
+    expect(response.usage).toMatchObject({
+      credits_charged: 8.25,
+      credits_reserved: 20,
+      effort: "auto",
+      resolved_effort: "medium",
+    });
   });
 
   it("throws typed API errors", async () => {
