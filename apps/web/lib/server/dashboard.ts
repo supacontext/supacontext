@@ -136,6 +136,13 @@ type PlaygroundApiKeyRow = {
   month_to_date_microcredits: string;
 };
 
+type WorkspaceContextRow = {
+  profile_id: string;
+  workspace_id: string;
+  email: string | null;
+  display_name: string | null;
+};
+
 export class DashboardError extends Error {
   constructor(
     readonly statusCode: number,
@@ -498,7 +505,41 @@ export async function getWorkspaceContext(): Promise<WorkspaceContext | null> {
   return getWorkspaceContextForUser(user);
 }
 
-export async function getWorkspaceContextForUser(user: User): Promise<WorkspaceContext> {
+export async function getWorkspaceContextForUser(user: User): Promise<WorkspaceContext | null> {
+  const rows = await getDatabase()<WorkspaceContextRow[]>`
+    select
+      profiles.id as profile_id,
+      workspaces.id as workspace_id,
+      profiles.email,
+      profiles.display_name
+    from profiles
+    join workspaces on workspaces.owner_profile_id = profiles.id
+    where profiles.workos_user_id = ${user.id}
+    order by workspaces.created_at asc
+    limit 1
+  `;
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    profileId: row.profile_id,
+    workspaceId: row.workspace_id,
+    workosUserId: user.id,
+    email: row.email,
+    displayName: row.display_name,
+  };
+}
+
+export async function provisionWorkspaceForUser(user: User): Promise<WorkspaceContext> {
+  const workspace = await getWorkspaceContextForUser(user);
+
+  if (workspace) {
+    return workspace;
+  }
+
   return ensureWorkspaceForUser({
     workosUserId: user.id,
     email: emailFromUser(user),

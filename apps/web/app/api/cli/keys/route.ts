@@ -58,9 +58,23 @@ export async function POST(request: Request) {
     return unauthorized();
   }
 
-  try {
-    const body = await request.json();
+  let body: unknown;
 
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      {
+        error: {
+          code: "INVALID_JSON",
+          message: "Request body must be valid JSON.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
     return Response.json(await createDashboardApiKey(workspace, body));
   } catch (error) {
     return jsonError(error);

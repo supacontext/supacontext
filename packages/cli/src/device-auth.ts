@@ -1,5 +1,7 @@
 import { CliError } from "./errors.js";
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export type CliDiscovery = {
   api_url: string;
   workos_client_id: string;
@@ -37,7 +39,9 @@ export type DashboardApiKey = {
 };
 
 export async function discoverCli(appUrl: string, fetchImpl: typeof fetch): Promise<CliDiscovery> {
-  const response = await fetchImpl(`${appUrl.replace(/\/$/, "")}/api/cli/config`);
+  const response = await fetchImpl(`${appUrl.replace(/\/$/, "")}/api/cli/config`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   const data = await readJson(response);
 
   if (!response.ok || !isDiscovery(data)) {
@@ -59,6 +63,7 @@ export async function authorizeDevice(
     body: new URLSearchParams({
       client_id: discovery.workos_client_id,
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const data = await readJson(response);
 
@@ -143,6 +148,7 @@ export async function listApiKeys(
     headers: {
       authorization: `Bearer ${accessToken}`,
     },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const data = await readJson(response);
 
@@ -151,7 +157,8 @@ export async function listApiKeys(
     !data ||
     typeof data !== "object" ||
     !("keys" in data) ||
-    !Array.isArray(data.keys)
+    !Array.isArray(data.keys) ||
+    !data.keys.every(isDashboardApiKey)
   ) {
     throw responseError(response, data, "Could not list Supacontext API keys.");
   }
@@ -178,6 +185,7 @@ export async function createApiKey(input: {
       maxEffort: input.maxEffort,
       monthlyCreditLimit: input.monthlyCreditLimit,
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const data = await readJson(response);
 
@@ -186,6 +194,7 @@ export async function createApiKey(input: {
     !data ||
     typeof data !== "object" ||
     !("key" in data) ||
+    !isDashboardApiKey(data.key) ||
     !("rawKey" in data) ||
     typeof data.rawKey !== "string"
   ) {
@@ -278,5 +287,26 @@ function isDeviceAuthentication(value: unknown): value is DeviceAuthentication {
     !!candidate.user &&
     typeof candidate.user === "object" &&
     typeof candidate.user.id === "string"
+  );
+}
+
+function isDashboardApiKey(value: unknown): value is DashboardApiKey {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<DashboardApiKey>;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.prefix === "string" &&
+    ["low", "medium", "high", "x_high"].includes(candidate.maxEffort ?? "") &&
+    (candidate.monthlyCreditLimit === null ||
+      typeof candidate.monthlyCreditLimit === "number") &&
+    typeof candidate.monthToDateCredits === "number" &&
+    (candidate.lastUsedAt === null || typeof candidate.lastUsedAt === "string") &&
+    (candidate.revokedAt === null || typeof candidate.revokedAt === "string") &&
+    typeof candidate.createdAt === "string"
   );
 }

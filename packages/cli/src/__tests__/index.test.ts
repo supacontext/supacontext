@@ -1,13 +1,14 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readConfig } from "../config.js";
-import { pollDeviceAuthentication } from "../device-auth.js";
+import { createApiKey, listApiKeys, pollDeviceAuthentication } from "../device-auth.js";
 import { runCli } from "../index.js";
 
 const apiKey = `sk_sc_${"A".repeat(43)}`;
+const temporaryDirectories = new Set<string>();
 
 class Capture extends Writable {
   value = "";
@@ -41,6 +42,7 @@ class InteractiveInput extends PassThrough {
 async function testDependencies(input = "") {
   const directory = await mkdtemp(join(tmpdir(), "supacontext-cli-"));
 
+  temporaryDirectories.add(directory);
   return {
     configPath: join(directory, "config.json"),
     env: {},
@@ -52,11 +54,21 @@ async function testDependencies(input = "") {
   };
 }
 
+afterEach(async () => {
+  await Promise.all(
+    [...temporaryDirectories].map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+  temporaryDirectories.clear();
+});
+
 describe("Supacontext CLI", () => {
   it("saves a key from stdin without printing it", async () => {
     const dependencies = await testDependencies(`${apiKey}\n`);
 
-    await runCli(["auth", "set-key", "--profile", "agent", "--json"], dependencies);
+    await runCli(
+      ["auth", "set-key", "--key-stdin", "--profile", "agent", "--json"],
+      dependencies,
+    );
 
     const config = await readConfig(dependencies.configPath);
     const output = dependencies.stdout.value + dependencies.stderr.value;
@@ -91,10 +103,12 @@ describe("Supacontext CLI", () => {
   it("runs WorkOS device authorization and stores a newly created key", async () => {
     const dependencies = await testDependencies();
     const accessToken = "workos-access-token";
+    let tokenRequests = 0;
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
 
       if (url === "https://app.example.test/api/cli/config") {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
         return Response.json({
           api_url: "https://api.example.test",
           workos_client_id: "client_test",
@@ -104,6 +118,7 @@ describe("Supacontext CLI", () => {
       }
 
       if (url === "https://workos.test/device") {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
         return Response.json({
           device_code: "secret-device-code",
           user_code: "ABCD-EFGH",
@@ -114,14 +129,13 @@ describe("Supacontext CLI", () => {
         });
       }
 
-      if (
-        url === "https://workos.test/token" &&
-        fetchMock.mock.calls.filter(([value]) => String(value) === url).length === 1
-      ) {
-        return Response.json({ error: "authorization_pending" }, { status: 400 });
-      }
-
       if (url === "https://workos.test/token") {
+        tokenRequests += 1;
+
+        if (tokenRequests === 1) {
+          return Response.json({ error: "authorization_pending" }, { status: 400 });
+        }
+
         return Response.json({
           access_token: accessToken,
           refresh_token: "unused-refresh-token",
@@ -130,11 +144,13 @@ describe("Supacontext CLI", () => {
       }
 
       if (url === "https://app.example.test/api/cli/keys" && !init?.method) {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
         expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${accessToken}`);
         return Response.json({ keys: [] });
       }
 
       if (url === "https://app.example.test/api/cli/keys" && init?.method === "POST") {
+        expect(init.signal).toBeInstanceOf(AbortSignal);
         expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${accessToken}`);
         expect(JSON.parse(String(init.body))).toEqual({
           name: "Agent CLI",
@@ -266,17 +282,24 @@ describe("Supacontext CLI", () => {
   });
 
   it("expires a device token request that hangs past the authorization deadline", async () => {
-    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
-      return new Promise<Response>((_resolve, reject) => {
-        const signal = init?.signal;
+    vi.useFakeTimers();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
 
-        expect(signal).toBeInstanceOf(AbortSignal);
-        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
-      });
-    }) as unknown as typeof fetch;
+      setTimeout(() => controller.abort(), milliseconds);
+      return controller.signal;
+    });
 
-    await expect(
-      pollDeviceAuthentication({
+    try {
+      const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+
+          expect(signal).toBeInstanceOf(AbortSignal);
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      }) as unknown as typeof fetch;
+      const authentication = pollDeviceAuthentication({
         discovery: {
           api_url: "https://api.example.test",
           workos_client_id: "client_test",
@@ -287,16 +310,93 @@ describe("Supacontext CLI", () => {
           device_code: "secret-device-code",
           user_code: "ABCD-EFGH",
           verification_uri: "https://auth.example.test/device",
-          expires_in: 0.01,
+          expires_in: 1,
         },
         fetch: fetchMock,
         sleep: vi.fn(async () => undefined),
+      });
+      const rejection = expect(authentication).rejects.toMatchObject({
+        code: "AUTHORIZATION_EXPIRED",
+        message: "Browser authorization expired. Try again.",
+      });
+
+      await vi.advanceTimersByTimeAsync(1_001);
+      await rejection;
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects malformed API key responses", async () => {
+    const malformedKey = {
+      id: "key_1",
+      name: 42,
+      prefix: "sk_sc_example",
+    };
+
+    await expect(
+      listApiKeys(
+        "https://app.example.test",
+        "access-token",
+        vi.fn(async () => Response.json({ keys: [malformedKey] })) as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({ code: "REQUEST_FAILED" });
+
+    await expect(
+      createApiKey({
+        appUrl: "https://app.example.test",
+        accessToken: "access-token",
+        name: "Agent CLI",
+        maxEffort: "high",
+        monthlyCreditLimit: null,
+        fetch: vi.fn(async () =>
+          Response.json({ key: malformedKey, rawKey: apiKey }),
+        ) as unknown as typeof fetch,
       }),
-    ).rejects.toMatchObject({
-      code: "AUTHORIZATION_EXPIRED",
-      message: "Browser authorization expired. Try again.",
+    ).rejects.toMatchObject({ code: "REQUEST_FAILED" });
+  });
+
+  it("rejects invalid browser verification URLs without opening them", async () => {
+    const dependencies = await testDependencies();
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+
+      if (url === "https://app.example.test/api/cli/config") {
+        return Response.json({
+          api_url: "https://api.example.test",
+          workos_client_id: "client_test",
+          device_authorization_url: "https://workos.test/device",
+          device_token_url: "https://workos.test/token",
+        });
+      }
+
+      return Response.json({
+        device_code: "secret-device-code",
+        user_code: "ABCD-EFGH",
+        verification_uri: "javascript:alert(1)",
+        expires_in: 300,
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      runCli(
+        ["auth", "login", "--app-url", "https://app.example.test", "--no-open"],
+        { ...dependencies, fetch: fetchMock },
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_URL" });
+    expect(dependencies.openUrl).not.toHaveBeenCalled();
+    expect(dependencies.stderr.value).not.toContain("javascript:");
+  });
+
+  it("requires a profile name when activating a profile", async () => {
+    const dependencies = await testDependencies();
+
+    await expect(runCli(["profile", "use"], dependencies)).rejects.toMatchObject({
+      code: "PROFILE_NAME_REQUIRED",
+      message: "A profile name is required.",
     });
-    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("sends source and depth options and returns structured JSON", async () => {

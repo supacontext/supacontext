@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { WorkOS } from "@workos-inc/node";
+import { NotFoundException, WorkOS, type User } from "@workos-inc/node";
 import { getWorkspaceContextForUser, type WorkspaceContext } from "./dashboard";
 import { webEnv } from "./env";
 
@@ -47,11 +47,17 @@ export async function getCliWorkspaceContext(request: Request): Promise<Workspac
     return null;
   }
 
-  try {
-    const user = await workos.userManagement.getUser(workosUserId);
+  let user: User;
 
-    return getWorkspaceContextForUser(user);
-  } catch {
-    return null;
+  try {
+    user = await workos.userManagement.getUser(workosUserId);
+  } catch (error) {
+    if (error instanceof NotFoundException) {
+      return null;
+    }
+
+    throw error;
   }
+
+  return getWorkspaceContextForUser(user);
 }

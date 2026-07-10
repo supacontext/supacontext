@@ -153,7 +153,10 @@ async function login(args: string[], dependencies: CliDependencies): Promise<voi
   const appUrl = validUrl(values["app-url"] ?? current.appUrl, "app URL");
   const discovery = await discoverCli(appUrl, dependencies.fetch);
   const authorization = await authorizeDevice(discovery, dependencies.fetch);
-  const verificationUrl = authorization.verification_uri_complete ?? authorization.verification_uri;
+  const verificationUrl = validUrl(
+    authorization.verification_uri_complete ?? authorization.verification_uri,
+    "verification URL",
+  );
   const opened = values["no-open"] ? false : await dependencies.openUrl(verificationUrl);
 
   dependencies.stderr.write(
@@ -386,7 +389,13 @@ async function useProfile(args: string[], dependencies: CliDependencies): Promis
   const { values, positionals } = parseCommandArgs(args, {
     json: { type: "boolean" },
   });
-  const name = profileName(positionals[0]);
+  const requestedName = positionals[0]?.trim();
+
+  if (!requestedName) {
+    throw new CliError("PROFILE_NAME_REQUIRED", "A profile name is required.");
+  }
+
+  const name = profileName(requestedName);
   const config = await readConfig(dependencies.configPath);
 
   if (!config.profiles[name]) {
