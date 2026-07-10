@@ -1,4 +1,4 @@
-import { REQUEST_STATUSES } from "@supacontext/core";
+import { CONTEXT_EFFORTS, REQUEST_STATUSES } from "@supacontext/core";
 import {
   listApiKeys,
   listUsageRequests,
@@ -9,6 +9,7 @@ import {
   formatCredits,
   formatDateTime,
   formatDurationMs,
+  formatEffort,
   formatPlatforms,
 } from "../../../lib/usage-formatting";
 
@@ -31,7 +32,7 @@ export default async function UsagePage({
         <div>
           <p className="eyebrow">Usage</p>
           <h1>Request history</h1>
-          <p className="mutedText">Filter requests by date, key, depth, and status.</p>
+          <p className="mutedText">Filter requests by date, key, effort, and status.</p>
         </div>
       </section>
 
@@ -56,13 +57,14 @@ export default async function UsagePage({
           </select>
         </label>
         <label className="field">
-          <span>Depth</span>
-          <select defaultValue={filters.depth ?? ""} name="depth">
-            <option value="">All depths</option>
-            <option value="fast">fast</option>
-            <option value="standard">standard</option>
-            <option value="thorough">thorough</option>
-            <option value="deep">deep</option>
+          <span>Effort</span>
+          <select defaultValue={filters.effort ?? ""} name="effort">
+            <option value="">All efforts</option>
+            {CONTEXT_EFFORTS.map((effort) => (
+              <option key={effort} value={effort}>
+                {formatEffort(effort)}
+              </option>
+            ))}
           </select>
         </label>
         <label className="field">
@@ -92,7 +94,7 @@ export default async function UsagePage({
               <details className="usageItem" key={request.id}>
                 <summary>
                   <span>{request.query}</span>
-                  <span>{request.depth}</span>
+                  <span>{formatEffort(request.effort)}</span>
                   <span>{request.status}</span>
                   <strong>{formatCredits(request.creditsCharged)}</strong>
                 </summary>
@@ -109,6 +111,10 @@ export default async function UsagePage({
                     <div>
                       <span>Sources</span>
                       <strong>{request.sourcesUsed}</strong>
+                    </div>
+                    <div>
+                      <span>Credits reserved</span>
+                      <strong>{formatCredits(request.creditsReserved)}</strong>
                     </div>
                     <div>
                       <span>Latency</span>

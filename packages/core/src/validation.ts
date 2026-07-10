@@ -1,7 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { CONTEXT_DEPTHS, PLATFORMS } from "./types.js";
+import { creditDecimalToMicrocredits } from "./pricing.js";
+import { CONTEXT_EFFORTS, PLATFORMS } from "./types.js";
 
 const maxMetadataEntries = 50;
 const maxMetadataValueSize = 4096;
@@ -203,10 +204,27 @@ const webhookUrlSchema = z
     message: "webhook_url must be an HTTPS public URL",
   });
 
+const maxCreditsSchema = z
+  .number()
+  .positive()
+  .max(250)
+  .refine(
+    (credits) => {
+      try {
+        creditDecimalToMicrocredits(credits);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "max_credits must have at most 6 decimal places" },
+  );
+
 export const contextRequestInputSchema = z
   .object({
     query: z.string().trim().min(1).max(4000),
-    depth: z.enum(CONTEXT_DEPTHS).default("standard"),
+    effort: z.enum(CONTEXT_EFFORTS).default("medium"),
+    max_credits: maxCreditsSchema.optional(),
     platforms: platformsSchema.optional(),
     async: z.boolean().default(false),
     webhook_url: webhookUrlSchema.optional(),

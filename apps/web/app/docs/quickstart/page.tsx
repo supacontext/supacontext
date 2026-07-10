@@ -8,8 +8,9 @@ const curlExample = `curl -X POST "$SUPACONTEXT_API_URL/v1/context" \\
   -H "Idempotency-Key: quickstart-1" \\
   -d '{
     "query": "current best practices for Next.js app router auth",
-    "depth": "standard",
-    "platforms": ["web", "reddit", "youtube"]
+    "effort": "auto",
+    "max_credits": 50,
+    "platforms": ["web", "reddit", "youtube", "github"]
   }'`;
 
 const sdkExample = `import { createSupaContext } from "@supacontext/sdk";
@@ -21,7 +22,8 @@ const supacontext = createSupaContext({
 
 const created = await supacontext.context.create({
   query: "current best practices for Next.js app router auth",
-  depth: "standard",
+  effort: "auto",
+  max_credits: 50,
   async: true
 });
 
@@ -38,7 +40,8 @@ const fetchExample = `const response = await fetch(\`\${process.env.SUPACONTEXT_
   },
   body: JSON.stringify({
     query: "current best practices for Next.js app router auth",
-    depth: "standard"
+    effort: "medium",
+    max_credits: 30
   })
 });
 
@@ -53,8 +56,9 @@ export default function QuickstartPage() {
           <p className="eyebrow">Quickstart</p>
           <h1>Make your first context request.</h1>
           <p className="heroText">
-            Create an API key in the dashboard, choose a depth, and send a JSON request to the
-            context endpoint.
+            Create an API key in the dashboard, choose an effort or use Auto, and send a JSON
+            request to the context endpoint. Supacontext returns structured cited JSON while raw
+            provider output stays internal.
           </p>
           <Link className="button primaryButton heroButton" href="/keys">
             Create API key
@@ -95,15 +99,33 @@ SUPACONTEXT_API_KEY=sk_sc_...`}</pre>
             <pre>{`{
   "id": "ctx_...",
   "query": "current best practices...",
-  "depth": "standard",
+  "effort": "auto",
+  "resolved_effort": "medium",
   "status": "completed",
   "answer": "...",
-  "context_pack": [],
-  "sources": [],
+  "context_pack": [{
+    "claim": "...",
+    "confidence": "high",
+    "supporting_sources": ["src_1"]
+  }],
+  "sources": [{
+    "id": "src_1",
+    "platform": "web",
+    "title": "...",
+    "url": "https://example.com/source",
+    "published_at": "2026-07-10T00:00:00.000Z",
+    "summary": "..."
+  }],
   "gaps": [],
   "usage": {
-    "credits_charged": 20,
-    "sources_used": 4
+    "credits_charged": 8.25,
+    "credits_reserved": 0,
+    "effort": "auto",
+    "resolved_effort": "medium",
+    "platforms_used": ["web"],
+    "sources_considered": 7,
+    "sources_used": 1,
+    "cached": false
   }
 }`}</pre>
           </article>

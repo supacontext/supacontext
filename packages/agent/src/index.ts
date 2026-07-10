@@ -1,4 +1,6 @@
-import type { ContextDepth, Platform } from "@supacontext/core";
+import type { ContextEffort, Platform } from "@supacontext/core";
+
+export * from "./platform-skills.js";
 
 export type AgentCitation = {
   id: string;
@@ -16,7 +18,7 @@ export type AgentContextSection = {
 
 export type CompiledAgentContext = {
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
   sources: Platform[];
   sections: AgentContextSection[];
   citations: AgentCitation[];
@@ -27,7 +29,7 @@ export type AgentJobInput = {
   requestId: string;
   workspaceId: string;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
   sources: Platform[];
 };
 

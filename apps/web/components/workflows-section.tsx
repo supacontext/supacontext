@@ -15,7 +15,7 @@ const agents = [
     id: "research",
     title: "Research agents",
     description:
-      "Collect cited signals from the web, Reddit, X, and YouTube so the agent can compare sources and hand off a clean brief.",
+      "Collect cited signals across web, social, news, forums, video, maps, Hacker News, and GitHub so the agent can compare sources and hand off a clean brief.",
   },
   {
     id: "content",
@@ -78,8 +78,8 @@ export function WorkflowsSection() {
         <div className="workflowsCopy">
           <h2 className="workflowsHeading">Context for real agent workflows</h2>
           <p className="mutedText">
-            Give agents one API for Web, Reddit, X, and YouTube context, gathered autonomously,
-            returned as JSON.
+            Give agents one API for 11 public platforms. Supacontext gathers the evidence and
+            returns structured cited JSON.
           </p>
           <div className="workflowsCTA">
             <Link className="button primaryButton" href="/dashboard">

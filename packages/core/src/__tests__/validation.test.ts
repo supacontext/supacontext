@@ -2,6 +2,39 @@ import { describe, expect, it } from "vitest";
 import { contextRequestInputSchema, validateWebhookUrl } from "../validation.js";
 
 describe("context request validation", () => {
+  it("defaults to Medium effort and accepts expanded platforms and a six-decimal cap", async () => {
+    const parsed = await contextRequestInputSchema.parseAsync({
+      query: "Supacontext",
+      max_credits: 12.345678,
+      platforms: ["github", "hackernews", "places"],
+    });
+
+    expect(parsed).toMatchObject({
+      effort: "medium",
+      max_credits: 12.345678,
+      platforms: ["github", "hackernews", "places"],
+    });
+  });
+
+  it("rejects depth, invalid effort, and invalid credit caps", () => {
+    expect(
+      contextRequestInputSchema.safeParse({ query: "Supacontext", depth: "standard" }).success,
+    ).toBe(false);
+    expect(
+      contextRequestInputSchema.safeParse({ query: "Supacontext", effort: "deep" }).success,
+    ).toBe(false);
+    expect(
+      contextRequestInputSchema.safeParse({ query: "Supacontext", max_credits: 0 }).success,
+    ).toBe(false);
+    expect(
+      contextRequestInputSchema.safeParse({ query: "Supacontext", max_credits: 250.000001 })
+        .success,
+    ).toBe(false);
+    expect(
+      contextRequestInputSchema.safeParse({ query: "Supacontext", max_credits: 1.0000001 }).success,
+    ).toBe(false);
+  });
+
   it("trims and validates webhook URLs", async () => {
     const parsed = await contextRequestInputSchema.parseAsync({
       query: "Supacontext",

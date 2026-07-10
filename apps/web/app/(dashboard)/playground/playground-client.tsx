@@ -3,19 +3,20 @@
 import { Check, Copy, Play, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-  CONTEXT_DEPTHS,
+  CONTEXT_EFFORTS,
   PLATFORMS,
-  type ContextDepth,
+  type ContextEffort,
   type Platform,
   type PublicContextResponse,
 } from "@supacontext/core";
-import { DEPTH_CREDIT_COST } from "@supacontext/core";
+import { formatEffort } from "../../../lib/usage-formatting";
 
 type PlaygroundApiResponse =
   | {
       status: string;
       result: PublicContextResponse;
       creditsCharged: number;
+      creditsReserved: number;
       sourcesUsed: number;
     }
   | {
@@ -27,11 +28,12 @@ type PlaygroundApiResponse =
 const sampleCurl = `curl -X POST "$SUPACONTEXT_API_URL/v1/context" \\
   -H "Authorization: Bearer $SUPACONTEXT_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"query":"latest AI browser automation patterns","depth":"standard","platforms":["web","reddit"]}'`;
+  -d '{"query":"latest AI browser automation patterns","effort":"auto","max_credits":50,"platforms":["web","reddit","github"]}'`;
 
 export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
   const [query, setQuery] = useState("What changed in AI coding agent tooling this week?");
-  const [depth, setDepth] = useState<ContextDepth>("standard");
+  const [effort, setEffort] = useState<ContextEffort>("auto");
+  const [maxCredits, setMaxCredits] = useState("50");
   const [platforms, setPlatforms] = useState<Platform[]>(["web", "reddit", "youtube"]);
   const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
   const [result, setResult] = useState<PublicContextResponse | null>(null);
@@ -75,6 +77,22 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
       return;
     }
 
+    const parsedMaxCredits = maxCredits.trim() ? Number(maxCredits) : undefined;
+    const validMaxCreditsPrecision =
+      !maxCredits.trim() || /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(maxCredits.trim());
+
+    if (
+      parsedMaxCredits !== undefined &&
+      (!validMaxCreditsPrecision ||
+        !Number.isFinite(parsedMaxCredits) ||
+        parsedMaxCredits <= 0 ||
+        parsedMaxCredits > 250)
+    ) {
+      setStatus("error");
+      setError("Max credits must be greater than 0, no more than 250, and use up to 6 decimals.");
+      return;
+    }
+
     setStatus("running");
 
     try {
@@ -85,7 +103,8 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
         },
         body: JSON.stringify({
           query,
-          depth,
+          effort,
+          ...(parsedMaxCredits === undefined ? {} : { max_credits: parsedMaxCredits }),
           platforms,
         }),
       });
@@ -122,14 +141,30 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
         </label>
 
         <label className="field">
-          <span>Depth</span>
-          <select value={depth} onChange={(event) => setDepth(event.target.value as ContextDepth)}>
-            {CONTEXT_DEPTHS.map((item) => (
+          <span>Effort</span>
+          <select
+            value={effort}
+            onChange={(event) => setEffort(event.target.value as ContextEffort)}
+          >
+            {CONTEXT_EFFORTS.map((item) => (
               <option key={item} value={item}>
-                {item} - {DEPTH_CREDIT_COST[item]} credits
+                {formatEffort(item)}
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="field">
+          <span>Max Credits (optional)</span>
+          <input
+            inputMode="decimal"
+            max={250}
+            min={0.000001}
+            onChange={(event) => setMaxCredits(event.target.value)}
+            step={0.000001}
+            type="number"
+            value={maxCredits}
+          />
         </label>
 
         <fieldset className="platformField">
@@ -175,7 +210,7 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
             <p className="mutedText">
               Status: <strong>{status}</strong>
               {result
-                ? ` - ${result.usage.credits_charged} credits - ${result.usage.sources_used} sources`
+                ? ` - ${result.usage.credits_charged} charged - ${result.usage.credits_reserved} reserved - ${result.usage.sources_used} sources`
                 : ""}
             </p>
           </div>
@@ -211,7 +246,9 @@ export function PlaygroundClient({ hasApiKey }: { hasApiKey: boolean }) {
           <pre>{resultJson}</pre>
         ) : (
           <div className="emptyState">
-            <p>Run a query to see the final JSON, credits charged, and sources used.</p>
+            <p>
+              Run a query to see structured cited JSON, actual charges, reservations, and sources.
+            </p>
           </div>
         )}
       </section>

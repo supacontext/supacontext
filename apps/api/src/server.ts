@@ -2,7 +2,13 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import type { ApiEnv } from "@supacontext/config";
-import { DEPTH_CREDIT_COST, PLANS } from "@supacontext/core";
+import {
+  CONTEXT_EFFORTS,
+  EFFORT_PROFILES,
+  PLANS,
+  PRICING_VERSION,
+  formatCreditMicrocredits,
+} from "@supacontext/core";
 import { createDatabaseClient } from "@supacontext/db";
 import { ZodError } from "zod";
 import { ContextService } from "./context-service.js";
@@ -108,9 +114,32 @@ export function buildServer(env: ApiEnv, dependencies: ServerDependencies = {}):
 
   server.get("/v1/meta", async () => ({
     product: "Supacontext",
-    depths: {
-      ...DEPTH_CREDIT_COST,
-    },
+    efforts: Object.fromEntries(
+      CONTEXT_EFFORTS.map((effort) => {
+        const profile = EFFORT_PROFILES[effort];
+
+        return [
+          effort,
+          {
+            kind: profile.kind,
+            minimum_credits: formatCreditMicrocredits(profile.minimumCreditMicros),
+            maximum_credits: formatCreditMicrocredits(profile.maximumCreditMicros),
+            behavior: profile.behavior,
+            ...(profile.kind === "research"
+              ? {
+                  model: profile.modelId,
+                  reasoning: profile.reasoning,
+                  maximum_output_tokens: profile.outputTokenCap,
+                }
+              : {
+                  router_model: profile.routerModelId,
+                  fallback_router_model: profile.fallbackRouterModelId,
+                }),
+          },
+        ];
+      }),
+    ),
+    pricing_version: PRICING_VERSION,
     plans: PLANS,
   }));
 

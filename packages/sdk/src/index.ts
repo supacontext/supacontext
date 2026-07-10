@@ -1,10 +1,24 @@
-export type ContextDepth = "fast" | "standard" | "thorough" | "deep";
-export type Platform = "web" | "reddit" | "x" | "youtube";
+export type ContextEffort = "low" | "medium" | "high" | "x_high" | "auto";
+export type ResolvedEffort = Exclude<ContextEffort, "auto">;
+export type Platform =
+  | "web"
+  | "reddit"
+  | "x"
+  | "youtube"
+  | "facebook"
+  | "news"
+  | "forums"
+  | "places"
+  | "linkedin"
+  | "hackernews"
+  | "github";
 export type RequestStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type SupaContextUsage = {
   credits_charged: number;
-  depth: ContextDepth;
+  credits_reserved: number;
+  effort: ContextEffort;
+  resolved_effort?: ResolvedEffort;
   platforms_used: Platform[];
   sources_considered: number;
   sources_used: number;
@@ -14,7 +28,8 @@ export type SupaContextUsage = {
 export type SupaContextResponse = {
   id: string;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  resolved_effort?: ResolvedEffort;
   status: RequestStatus;
   answer: string | null;
   context_pack: unknown[];
@@ -26,14 +41,15 @@ export type SupaContextResponse = {
 export type QueuedContextResponse = {
   id: string;
   status: "queued";
-  credits_charged: number;
+  credits_reserved: number;
 };
 
 export type ContextCreateResponse = SupaContextResponse | QueuedContextResponse;
 
 export type ContextCreateInput = {
   query: string;
-  depth?: ContextDepth;
+  effort?: ContextEffort;
+  max_credits?: number;
   platforms?: Platform[];
   async?: boolean;
   webhook_url?: string;

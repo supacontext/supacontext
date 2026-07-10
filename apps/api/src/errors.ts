@@ -3,7 +3,9 @@ import type { ZodError } from "zod";
 export type ApiErrorCode =
   | "invalid_request"
   | "unauthorized"
-  | "forbidden_depth"
+  | "forbidden_effort"
+  | "budget_too_low"
+  | "budget_exhausted"
   | "insufficient_credits"
   | "rate_limited"
   | "provider_error"

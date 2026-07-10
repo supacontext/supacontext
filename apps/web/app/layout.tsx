@@ -24,7 +24,7 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: "Supacontext | Context API for AI Agents",
   description:
-    "Supacontext replaces separate Web, Reddit, X, and YouTube integrations with one endpoint that returns compact, cited JSON for AI agents.",
+    "Supacontext replaces separate public-source integrations with one endpoint that returns compact, cited JSON for AI agents across 11 platforms.",
 };
 
 export default async function RootLayout({

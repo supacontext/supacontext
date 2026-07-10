@@ -911,7 +911,7 @@ h3 {
   color: var(--primary);
 }
 
-.agenticDepthRow {
+.agenticEffortRow {
   display: grid;
   width: min(620px, 100%);
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -921,7 +921,7 @@ h3 {
   background: #ffffff;
 }
 
-.agenticDepthRow span {
+.agenticEffortRow span {
   padding: 13px 10px;
   color: var(--muted);
   font-size: 0.82rem;
@@ -929,16 +929,16 @@ h3 {
   text-align: center;
 }
 
-.agenticDepthRow span:not(:last-child) {
+.agenticEffortRow span:not(:last-child) {
   border-right: 1px solid var(--line);
 }
 
-.agenticDepthRow .active {
+.agenticEffortRow .active {
   color: var(--primary);
   background: var(--surface-blue);
 }
 
-.agenticDepthCaption {
+.agenticEffortCaption {
   margin: 14px 0 0;
   color: var(--muted);
   font-size: 0.92rem;
@@ -982,11 +982,11 @@ h3 {
     padding: 24px;
   }
 
-  .agenticDepthRow {
+  .agenticEffortRow {
     grid-template-columns: 1fr;
   }
 
-  .agenticDepthRow span:not(:last-child) {
+  .agenticEffortRow span:not(:last-child) {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }

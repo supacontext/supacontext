@@ -1,11 +1,12 @@
-import type { ContextDepth, Platform } from "@supacontext/core";
+import type { ContextEffort, Platform } from "@supacontext/core";
 import { ApiError } from "./errors.js";
 
 export type EnqueueContextJobInput = {
   requestId: string;
   workspaceId: string;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  maxCredits?: number;
   platforms: Platform[];
   webhookUrl?: string;
   metadata?: unknown;
