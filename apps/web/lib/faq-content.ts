@@ -66,7 +66,7 @@ export const faqs: FAQ[] = [
   {
     question: "How does Supacontext pricing work?",
     answer:
-      "Supacontext reserves credits before paid work, charges actual provider operations and model token usage, then releases anything unused. Every effort has an internal cap, and max_credits can set a lower cap per request.",
+      "Supacontext reserves credits before paid work, charges actual provider operations and model token usage, then releases anything unused. Every effort has an internal cap, max_credits can set a lower cap per request, and every new account includes 250 free credits.",
   },
 ];
 

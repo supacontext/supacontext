@@ -20,8 +20,14 @@ export const PLATFORMS = [
 export type Platform = (typeof PLATFORMS)[number];
 export type PlatformMode = "auto" | "manual";
 
-export const PLAN_SLUGS = ["trial", "starter", "builder", "pro", "scale"] as const;
+export const PLAN_SLUGS = ["free", "starter", "pro", "growth", "scale", "enterprise"] as const;
 export type PlanSlug = (typeof PLAN_SLUGS)[number];
+
+export const SELF_SERVE_PAID_PLAN_SLUGS = ["starter", "pro", "growth", "scale"] as const;
+export type SelfServePaidPlanSlug = (typeof SELF_SERVE_PAID_PLAN_SLUGS)[number];
+
+export const PAID_BILLING_INTERVALS = ["month", "year"] as const;
+export type PaidBillingInterval = (typeof PAID_BILLING_INTERVALS)[number];
 
 export const PROVIDERS = [
   "exa",

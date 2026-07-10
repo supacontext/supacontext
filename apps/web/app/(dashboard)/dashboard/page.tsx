@@ -57,7 +57,11 @@ export default async function DashboardPage() {
         <article className="metricCard">
           <span>Credits remaining</span>
           <strong>{formatCredits(balance)}</strong>
-          <p>{formatCredits(plan.includedCredits)} included</p>
+          <p>
+            {plan.includedCredits === null
+              ? "Custom credits included"
+              : `${formatCredits(plan.includedCredits)} included`}
+          </p>
         </article>
         <article className="metricCard">
           <span>Usage this month</span>

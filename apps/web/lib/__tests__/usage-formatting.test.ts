@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAnnualMonthlyPrice,
   formatCredits,
   formatDateTime,
   formatDurationMs,
@@ -15,6 +16,7 @@ describe("usage formatting", () => {
     expect(formatCredits(1500)).toBe("1,500 credits");
     expect(formatCredits(8.123456)).toBe("8.123456 credits");
     expect(formatMoney(1900)).toBe("$19");
+    expect(formatAnnualMonthlyPrice(19000)).toBe("$15.83");
   });
 
   it("formats effort labels", () => {

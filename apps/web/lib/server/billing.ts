@@ -10,7 +10,7 @@ import {
   type BillingWebhookEvent,
   type PaidPlanSlug,
 } from "@supacontext/billing";
-import { CREDIT_MICROS } from "@supacontext/core";
+import { CREDIT_MICROS, type PaidBillingInterval } from "@supacontext/core";
 import { createDatabaseClient, type DatabaseClient } from "@supacontext/db";
 import type postgres from "postgres";
 import { webEnv } from "./env";
@@ -153,16 +153,39 @@ async function findPlan(
   return isPaidPlan(plan) ? plan : null;
 }
 
+async function findBillingInterval(
+  transaction: postgres.TransactionSql,
+  event: BillingWebhookEvent,
+): Promise<PaidBillingInterval | null> {
+  if (event.billingInterval) {
+    return event.billingInterval;
+  }
+
+  if (!event.subscriptionId) {
+    return null;
+  }
+
+  const rows = await transaction<Array<{ billing_interval: PaidBillingInterval | null }>>`
+    select billing_interval
+    from subscriptions
+    where creem_subscription_id = ${event.subscriptionId}
+    limit 1
+  `;
+
+  return rows[0]?.billing_interval ?? null;
+}
+
 async function upsertSubscription(
   transaction: postgres.TransactionSql,
   event: BillingWebhookEvent,
 ): Promise<void> {
   const workspaceId = await findWorkspaceId(transaction, event);
   const plan = await findPlan(transaction, event);
+  const billingInterval = await findBillingInterval(transaction, event);
 
-  if (!workspaceId || !plan || !event.subscriptionId) {
+  if (!workspaceId || !plan || !billingInterval || !event.subscriptionId) {
     throw new BillingConfigurationError(
-      "Creem subscription event is missing workspace, plan, or subscription id.",
+      "Creem subscription event is missing workspace, plan, billing interval, or subscription id.",
     );
   }
 
@@ -170,6 +193,7 @@ async function upsertSubscription(
     insert into subscriptions (
       workspace_id,
       plan_slug,
+      billing_interval,
       status,
       creem_customer_id,
       creem_subscription_id,
@@ -180,6 +204,7 @@ async function upsertSubscription(
     values (
       ${workspaceId},
       ${plan}::plan_slug,
+      ${billingInterval},
       ${normalizeStatus(event)}::subscription_status,
       ${event.customerId},
       ${event.subscriptionId},
@@ -191,6 +216,7 @@ async function upsertSubscription(
     set
       workspace_id = excluded.workspace_id,
       plan_slug = excluded.plan_slug,
+      billing_interval = excluded.billing_interval,
       status = excluded.status,
       creem_customer_id = coalesce(excluded.creem_customer_id, subscriptions.creem_customer_id),
       current_period_start = coalesce(excluded.current_period_start, subscriptions.current_period_start),
@@ -199,15 +225,18 @@ async function upsertSubscription(
   `;
 }
 
-async function grantMonthlyCredits(
+async function grantBillingPeriodCredits(
   transaction: postgres.TransactionSql,
   event: BillingWebhookEvent,
 ): Promise<void> {
   const workspaceId = await findWorkspaceId(transaction, event);
   const plan = await findPlan(transaction, event);
+  const billingInterval = await findBillingInterval(transaction, event);
 
-  if (!workspaceId || !plan) {
-    throw new BillingConfigurationError("Creem payment event is missing workspace or paid plan.");
+  if (!workspaceId || !plan || !billingInterval) {
+    throw new BillingConfigurationError(
+      "Creem payment event is missing workspace, paid plan, or billing interval.",
+    );
   }
 
   const grantRows = await transaction<Array<{ id: string }>>`
@@ -221,7 +250,7 @@ async function grantMonthlyCredits(
     values (
       ${workspaceId},
       'grant'::ledger_event_type,
-      ${(BigInt(paidPlanCredits(plan)) * CREDIT_MICROS).toString()},
+      ${(BigInt(paidPlanCredits(plan, billingInterval)) * CREDIT_MICROS).toString()},
       ${`creem:payment:${event.paymentId ?? event.externalId}:credits`},
       ${transaction.json({
         provider: "creem",
@@ -229,6 +258,8 @@ async function grantMonthlyCredits(
         payment_id: event.paymentId,
         subscription_id: event.subscriptionId,
         plan,
+        billing_interval: billingInterval,
+        included_credits_per_month: paidPlanCredits(plan),
       })}
     )
     on conflict (workspace_id, idempotency_key)
@@ -272,7 +303,7 @@ async function applyCreemEvent(
       await upsertSubscription(transaction, event);
     }
 
-    await grantMonthlyCredits(transaction, event);
+    await grantBillingPeriodCredits(transaction, event);
     return;
   }
 }
@@ -280,6 +311,7 @@ async function applyCreemEvent(
 export async function createCreemCheckout(
   workspaceId: string,
   plan: PaidPlanSlug,
+  billingInterval: PaidBillingInterval,
 ): Promise<string> {
   const sql = getDatabase();
   const customerRows = await sql<Array<{ creem_customer_id: string | null }>>`
@@ -293,6 +325,7 @@ export async function createCreemCheckout(
   const session = await getCreemClient().createCheckoutSession({
     workspaceId,
     plan,
+    billingInterval,
     customerId: customerRows[0]?.creem_customer_id ?? null,
     successUrl: `${getAppUrl()}/billing?checkout=success`,
     cancelUrl: `${getAppUrl()}/billing?checkout=cancelled`,

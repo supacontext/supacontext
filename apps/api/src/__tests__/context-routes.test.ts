@@ -99,7 +99,7 @@ class InMemoryContextStore implements ContextStore {
     } = {},
   ) {
     this.balanceMicrocredits = BigInt(input.balanceCredits ?? 500) * CREDIT_MICROS;
-    this.plan = input.plan ?? "builder";
+    this.plan = input.plan ?? "pro";
     this.apiKey = {
       id: apiKeyId,
       workspace_id: workspaceId,
@@ -193,13 +193,12 @@ class InMemoryContextStore implements ContextStore {
         }
       }
 
-      if (input.async) {
-        const active = [...this.requests.values()].filter(
-          (request) => request.status === "queued" || request.status === "running",
-        ).length;
-        if (active >= PLAN_RATE_LIMITS[input.plan].concurrentJobs) {
-          throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
-        }
+      const active = [...this.requests.values()].filter(
+        (request) => request.status === "queued" || request.status === "running",
+      ).length;
+      const concurrentJobs = PLAN_RATE_LIMITS[input.plan].concurrentJobs;
+      if (concurrentJobs !== null && active >= concurrentJobs) {
+        throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
       }
 
       const authorization = authorizeUsage({
@@ -560,7 +559,7 @@ describe("context API effort and reservation routes", () => {
   });
 
   it("serializes concurrent reservations so the balance never becomes negative", async () => {
-    const store = new InMemoryContextStore({ balanceCredits: 10, plan: "builder" });
+    const store = new InMemoryContextStore({ balanceCredits: 10, plan: "pro" });
     const server = serverFor(store);
     const request = (key: string) => ({
       method: "POST" as const,

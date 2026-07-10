@@ -26,7 +26,7 @@ export class InMemoryRateLimiter implements RateLimiter {
   private readonly counters = new Map<string, CounterState>();
 
   async check(input: RateLimitInput): Promise<RateLimitResult> {
-    const limit = PLAN_RATE_LIMITS[input.plan].requestsPerMinute;
+    const limit = PLAN_RATE_LIMITS[input.plan].requestsPerMinute ?? Number.MAX_SAFE_INTEGER;
     const now = Date.now();
     const windowStart = Math.floor(now / 60_000) * 60_000;
     const resetAt = windowStart + 60_000;
@@ -53,7 +53,7 @@ class UpstashRateLimiter implements RateLimiter {
   ) {}
 
   async check(input: RateLimitInput): Promise<RateLimitResult> {
-    const limit = PLAN_RATE_LIMITS[input.plan].requestsPerMinute;
+    const limit = PLAN_RATE_LIMITS[input.plan].requestsPerMinute ?? Number.MAX_SAFE_INTEGER;
     const now = Date.now();
     const windowStart = Math.floor(now / 60_000) * 60_000;
     const resetAt = windowStart + 60_000;

@@ -180,10 +180,14 @@ Creem billing:
 
 - `CREEM_API_KEY`
 - `CREEM_WEBHOOK_SECRET`
-- `CREEM_STARTER_PRODUCT_ID`
-- `CREEM_BUILDER_PRODUCT_ID`
-- `CREEM_PRO_PRODUCT_ID`
-- `CREEM_SCALE_PRODUCT_ID`
+- `CREEM_STARTER_MONTHLY_PRODUCT_ID`
+- `CREEM_STARTER_ANNUAL_PRODUCT_ID`
+- `CREEM_PRO_MONTHLY_PRODUCT_ID`
+- `CREEM_PRO_ANNUAL_PRODUCT_ID`
+- `CREEM_GROWTH_MONTHLY_PRODUCT_ID`
+- `CREEM_GROWTH_ANNUAL_PRODUCT_ID`
+- `CREEM_SCALE_MONTHLY_PRODUCT_ID`
+- `CREEM_SCALE_ANNUAL_PRODUCT_ID`
 
 Never expose service-role keys, provider keys, Creem secrets, QStash signing keys, Redis tokens, or `API_KEY_HASH_SECRET` to client code.
 
@@ -214,6 +218,7 @@ Creem checkout is created from the dashboard billing page. The checkout metadata
 
 - `workspace_id`
 - `plan`
+- `billing_interval`
 
 Configure the Creem webhook endpoint:
 
@@ -229,7 +234,7 @@ Handled events:
 - payment succeeded
 - payment failed
 
-Credit grants are ledger entries with idempotency keys based on the Creem payment id. Duplicate webhooks do not double-grant. Successful monthly payments reset API-key month-to-date counters and grant the paid plan's monthly credits.
+Credit grants are ledger entries with idempotency keys based on the Creem payment id. Duplicate webhooks do not double-grant. Successful payments reset API-key month-to-date counters and grant credits for the paid billing period. Annual payments grant twelve times the plan's monthly included credits.
 
 The Creem adapter contains TODO comments around the exact checkout and portal HTTP endpoint names; verify those against Creem's current API before live billing traffic.
 

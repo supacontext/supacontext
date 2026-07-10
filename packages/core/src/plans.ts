@@ -1,60 +1,74 @@
 import type { PlanSlug } from "./types.js";
 
-export type BillingInterval = "one_time" | "month";
+export type BillingInterval = "one_time" | "month" | "custom";
 
 export type PlanConfig = {
   slug: PlanSlug;
   name: string;
   billingInterval: BillingInterval;
-  priceCents: number;
-  includedCredits: number;
+  priceCents: number | null;
+  annualPriceCents: number | null;
+  includedCredits: number | null;
 };
 
 export type PlanRateLimit = {
-  requestsPerMinute: number;
-  concurrentJobs: number;
+  requestsPerMinute: number | null;
+  concurrentJobs: number | null;
 };
 
 export const PLANS = {
-  trial: {
-    slug: "trial",
-    name: "Trial",
+  free: {
+    slug: "free",
+    name: "Free",
     billingInterval: "one_time",
     priceCents: 0,
-    includedCredits: 50,
+    annualPriceCents: null,
+    includedCredits: 250,
   },
   starter: {
     slug: "starter",
     name: "Starter",
     billingInterval: "month",
     priceCents: 1900,
-    includedCredits: 1500,
-  },
-  builder: {
-    slug: "builder",
-    name: "Builder",
-    billingInterval: "month",
-    priceCents: 4900,
-    includedCredits: 4000,
+    annualPriceCents: 19000,
+    includedCredits: 5_000,
   },
   pro: {
     slug: "pro",
     name: "Pro",
     billingInterval: "month",
-    priceCents: 9900,
-    includedCredits: 9000,
+    priceCents: 7900,
+    annualPriceCents: 79000,
+    includedCredits: 25_000,
+  },
+  growth: {
+    slug: "growth",
+    name: "Growth",
+    billingInterval: "month",
+    priceCents: 19900,
+    annualPriceCents: 199000,
+    includedCredits: 75_000,
   },
   scale: {
     slug: "scale",
     name: "Scale",
     billingInterval: "month",
-    priceCents: 24900,
-    includedCredits: 22000,
+    priceCents: 49900,
+    annualPriceCents: 499000,
+    includedCredits: 200_000,
+  },
+  enterprise: {
+    slug: "enterprise",
+    name: "Enterprise",
+    billingInterval: "custom",
+    priceCents: null,
+    annualPriceCents: null,
+    includedCredits: null,
   },
 } as const satisfies Record<PlanSlug, PlanConfig>;
 
 export const PLAN_RATE_LIMITS = {
-  trial: {
+  free: {
     requestsPerMinute: 5,
     concurrentJobs: 1,
   },
@@ -62,20 +76,24 @@ export const PLAN_RATE_LIMITS = {
     requestsPerMinute: 20,
     concurrentJobs: 3,
   },
-  builder: {
-    requestsPerMinute: 60,
-    concurrentJobs: 8,
-  },
   pro: {
+    requestsPerMinute: 60,
+    concurrentJobs: 10,
+  },
+  growth: {
     requestsPerMinute: 150,
-    concurrentJobs: 20,
+    concurrentJobs: 25,
   },
   scale: {
     requestsPerMinute: 300,
-    concurrentJobs: 50,
+    concurrentJobs: 75,
+  },
+  enterprise: {
+    requestsPerMinute: null,
+    concurrentJobs: null,
   },
 } as const satisfies Record<PlanSlug, PlanRateLimit>;
 
-export function getPlanIncludedCredits(plan: PlanSlug): number {
+export function getPlanIncludedCredits(plan: PlanSlug): number | null {
   return PLANS[plan].includedCredits;
 }

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import type { PaidPlanSlug } from "@supacontext/billing";
+import { isPaidPlan, type PaidPlanSlug } from "@supacontext/billing";
 import {
   CONTEXT_EFFORTS,
   CREDIT_MICROS,
@@ -14,6 +14,7 @@ import {
   creditMicrocreditsToDisplayNumber,
   createApiKeyMaterial,
   type ContextEffort,
+  type PaidBillingInterval,
   type Platform,
   type PlanSlug,
   type PublicContextResponse,
@@ -54,8 +55,10 @@ export type DashboardApiKey = {
 export type DashboardPlanState = {
   slug: PlanSlug;
   name: string;
-  includedCredits: number;
-  priceCents: number;
+  includedCredits: number | null;
+  priceCents: number | null;
+  annualPriceCents: number | null;
+  billingInterval: PaidBillingInterval | null;
   status: string;
   renewalDate: string | null;
   cancelAtPeriodEnd: boolean;
@@ -89,6 +92,7 @@ export type UsageFilters = {
 
 type PlanRow = {
   plan_slug: PlanSlug;
+  billing_interval: PaidBillingInterval | null;
   status: string;
   current_period_end: Date | null;
   cancel_at_period_end: boolean;
@@ -444,7 +448,7 @@ async function ensureWorkspaceForUser(input: {
       )
       select
         ${workspaceId},
-        'trial'::plan_slug,
+        'free'::plan_slug,
         'trialing'::subscription_status,
         now()
       where not exists (
@@ -465,9 +469,9 @@ async function ensureWorkspaceForUser(input: {
       values (
         ${workspaceId},
         'grant'::ledger_event_type,
-        ${(BigInt(PLANS.trial.includedCredits) * CREDIT_MICROS).toString()},
+        ${(BigInt(PLANS.free.includedCredits) * CREDIT_MICROS).toString()},
         ${`trial-grant:${workspaceId}`},
-        ${transaction.json({ plan: "trial", source: "dashboard_signup" })}
+        ${transaction.json({ plan: "free", source: "dashboard_signup" })}
       )
       on conflict (workspace_id, idempotency_key)
       where idempotency_key is not null
@@ -511,7 +515,7 @@ export async function requireWorkspaceContext(): Promise<WorkspaceContext> {
 export async function getPlanState(workspaceId: string): Promise<DashboardPlanState> {
   const sql = getDatabase();
   const rows = await sql<PlanRow[]>`
-    select plan_slug, status, current_period_end, cancel_at_period_end
+    select plan_slug, billing_interval, status, current_period_end, cancel_at_period_end
     from subscriptions
     where workspace_id = ${workspaceId}
       and status in ('trialing', 'active', 'past_due')
@@ -521,7 +525,7 @@ export async function getPlanState(workspaceId: string): Promise<DashboardPlanSt
     limit 1
   `;
   const row = rows[0];
-  const slug = row?.plan_slug && isPlanSlug(row.plan_slug) ? row.plan_slug : "trial";
+  const slug = row?.plan_slug && isPlanSlug(row.plan_slug) ? row.plan_slug : "free";
   const plan = PLANS[slug];
 
   return {
@@ -529,6 +533,8 @@ export async function getPlanState(workspaceId: string): Promise<DashboardPlanSt
     name: plan.name,
     includedCredits: plan.includedCredits,
     priceCents: plan.priceCents,
+    annualPriceCents: plan.annualPriceCents,
+    billingInterval: row?.billing_interval ?? null,
     status: row?.status ?? "trialing",
     renewalDate: toIso(row?.current_period_end ?? null),
     cancelAtPeriodEnd: row?.cancel_at_period_end ?? false,
@@ -1167,9 +1173,10 @@ export function parseUsageFilters(
 export async function createBillingCheckout(
   workspaceId: string,
   plan: PaidPlanSlug,
+  billingInterval: PaidBillingInterval,
 ): Promise<string> {
   try {
-    return await createCreemCheckout(workspaceId, plan);
+    return await createCreemCheckout(workspaceId, plan, billingInterval);
   } catch (error) {
     console.error(error);
     throw new DashboardError(501, "BILLING_NOT_CONFIGURED", "Billing checkout is not available.");
@@ -1190,9 +1197,9 @@ export async function createBillingPortal(workspaceId: string): Promise<string> 
 }
 
 export function parsePaidPlan(value: unknown): PaidPlanSlug | null {
-  if (value === "starter" || value === "builder" || value === "pro" || value === "scale") {
-    return value;
-  }
+  return isPaidPlan(value) ? value : null;
+}
 
-  return null;
+export function parsePaidBillingInterval(value: unknown): PaidBillingInterval | null {
+  return value === "month" || value === "year" ? value : null;
 }

@@ -13,8 +13,9 @@ export default function PricingPage() {
           <p className="eyebrow">Pricing</p>
           <h1>Pay for the research your request actually uses.</h1>
           <p className="heroText">
-            Credits cover provider operations, model input and output tokens, and Auto routing.
-            Effort controls the research profile and safety cap. Actual usage determines the charge.
+            Start with 250 free credits. Credits cover provider operations, model input and output
+            tokens, and Auto routing. Effort controls the research profile and safety cap; actual
+            usage determines the charge.
           </p>
         </section>
 
@@ -50,6 +51,10 @@ export default function PricingPage() {
               <li>
                 <CheckCircle2 aria-hidden="true" size={18} />
                 Settlement releases the unused reservation.
+              </li>
+              <li>
+                <CheckCircle2 aria-hidden="true" size={18} />
+                Annual billing costs the same as ten monthly payments.
               </li>
               <li>
                 <CheckCircle2 aria-hidden="true" size={18} />

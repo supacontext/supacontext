@@ -1,13 +1,20 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { PLANS, type PlanSlug } from "@supacontext/core";
+import {
+  PAID_BILLING_INTERVALS,
+  PLANS,
+  SELF_SERVE_PAID_PLAN_SLUGS,
+  type PaidBillingInterval,
+  type SelfServePaidPlanSlug,
+} from "@supacontext/core";
 
-export type PaidPlanSlug = Exclude<PlanSlug, "trial">;
+export type PaidPlanSlug = SelfServePaidPlanSlug;
 
-export type CreemProductIds = Record<PaidPlanSlug, string>;
+export type CreemProductIds = Record<PaidPlanSlug, Record<PaidBillingInterval, string>>;
 
 export type CheckoutSessionInput = {
   workspaceId: string;
   plan: PaidPlanSlug;
+  billingInterval: PaidBillingInterval;
   successUrl: string;
   cancelUrl: string;
   customerId?: string | null;
@@ -53,6 +60,7 @@ export type BillingWebhookEvent = {
   payload: unknown;
   workspaceId: string | null;
   plan: PaidPlanSlug | null;
+  billingInterval: PaidBillingInterval | null;
   customerId: string | null;
   subscriptionId: string | null;
   paymentId: string | null;
@@ -209,14 +217,36 @@ function normalizeEventType(value: string | null): BillingWebhookEventType {
   return "unknown";
 }
 
-function planFromValue(value: string | null, productIds: CreemProductIds): PaidPlanSlug | null {
-  if (value === "starter" || value === "builder" || value === "pro" || value === "scale") {
-    return value;
+function productFromValue(
+  value: string | null,
+  productIds: CreemProductIds,
+): { plan: PaidPlanSlug; billingInterval: PaidBillingInterval } | null {
+  if (!value) {
+    return null;
   }
 
-  const match = Object.entries(productIds).find(([, productId]) => productId === value)?.[0];
+  for (const plan of SELF_SERVE_PAID_PLAN_SLUGS) {
+    for (const billingInterval of PAID_BILLING_INTERVALS) {
+      if (productIds[plan][billingInterval] === value) {
+        return { plan, billingInterval };
+      }
+    }
+  }
 
-  return match ? (match as PaidPlanSlug) : null;
+  return null;
+}
+
+function planFromValue(value: string | null): PaidPlanSlug | null {
+  return isPaidPlan(value) ? value : null;
+}
+
+function billingIntervalFromValue(value: string | null): PaidBillingInterval | null {
+  const normalized =
+    value === "every-month" ? "month" : value === "every-year" ? "year" : value;
+
+  return PAID_BILLING_INTERVALS.includes(normalized as PaidBillingInterval)
+    ? (normalized as PaidBillingInterval)
+    : null;
 }
 
 function metadataFrom(data: Record<string, unknown>): Record<string, unknown> {
@@ -253,10 +283,25 @@ function normalizeCreemEvent(
     recordId(order.product),
     metadata.product_id,
   );
-  const plan = planFromValue(
-    firstString(metadata.plan, metadata.plan_slug, data.plan_slug) ?? productId,
-    productIds,
-  );
+  const product = productFromValue(productId, productIds);
+  const plan =
+    planFromValue(firstString(metadata.plan, metadata.plan_slug, data.plan_slug)) ??
+    product?.plan ??
+    null;
+  const billingInterval =
+    billingIntervalFromValue(
+      firstString(
+        metadata.billing_interval,
+        metadata.billingInterval,
+        metadata.billing_period,
+        metadata.billingPeriod,
+        data.billing_interval,
+        data.billing_period,
+        data.billingPeriod,
+      ),
+    ) ??
+    product?.billingInterval ??
+    null;
   const subscriptionId = firstString(
     data.subscription_id,
     data.subscriptionId,
@@ -301,6 +346,7 @@ function normalizeCreemEvent(
     payload: rawPayload,
     workspaceId,
     plan,
+    billingInterval,
     customerId,
     subscriptionId,
     paymentId,
@@ -387,7 +433,7 @@ export class CreemBillingClient implements BillingClient {
   }
 
   async createCheckoutSession(input: CheckoutSessionInput): Promise<CheckoutSession> {
-    const productId = this.productIds[input.plan];
+    const productId = this.productIds[input.plan][input.billingInterval];
 
     if (!productId) {
       throw new BillingConfigurationError(`Creem product id is not configured for ${input.plan}.`);
@@ -405,6 +451,7 @@ export class CreemBillingClient implements BillingClient {
         metadata: {
           workspace_id: input.workspaceId,
           plan: input.plan,
+          billing_interval: input.billingInterval,
         },
       }),
       signal: AbortSignal.timeout(10_000),
@@ -475,17 +522,56 @@ async function mapSessionResponse(
 
 export function readCreemProductIds(source: NodeJS.ProcessEnv = process.env): CreemProductIds {
   return {
-    starter: assertConfigured(source.CREEM_STARTER_PRODUCT_ID ?? "", "CREEM_STARTER_PRODUCT_ID"),
-    builder: assertConfigured(source.CREEM_BUILDER_PRODUCT_ID ?? "", "CREEM_BUILDER_PRODUCT_ID"),
-    pro: assertConfigured(source.CREEM_PRO_PRODUCT_ID ?? "", "CREEM_PRO_PRODUCT_ID"),
-    scale: assertConfigured(source.CREEM_SCALE_PRODUCT_ID ?? "", "CREEM_SCALE_PRODUCT_ID"),
+    starter: {
+      month: assertConfigured(
+        source.CREEM_STARTER_MONTHLY_PRODUCT_ID ?? "",
+        "CREEM_STARTER_MONTHLY_PRODUCT_ID",
+      ),
+      year: assertConfigured(
+        source.CREEM_STARTER_ANNUAL_PRODUCT_ID ?? "",
+        "CREEM_STARTER_ANNUAL_PRODUCT_ID",
+      ),
+    },
+    pro: {
+      month: assertConfigured(
+        source.CREEM_PRO_MONTHLY_PRODUCT_ID ?? "",
+        "CREEM_PRO_MONTHLY_PRODUCT_ID",
+      ),
+      year: assertConfigured(
+        source.CREEM_PRO_ANNUAL_PRODUCT_ID ?? "",
+        "CREEM_PRO_ANNUAL_PRODUCT_ID",
+      ),
+    },
+    growth: {
+      month: assertConfigured(
+        source.CREEM_GROWTH_MONTHLY_PRODUCT_ID ?? "",
+        "CREEM_GROWTH_MONTHLY_PRODUCT_ID",
+      ),
+      year: assertConfigured(
+        source.CREEM_GROWTH_ANNUAL_PRODUCT_ID ?? "",
+        "CREEM_GROWTH_ANNUAL_PRODUCT_ID",
+      ),
+    },
+    scale: {
+      month: assertConfigured(
+        source.CREEM_SCALE_MONTHLY_PRODUCT_ID ?? "",
+        "CREEM_SCALE_MONTHLY_PRODUCT_ID",
+      ),
+      year: assertConfigured(
+        source.CREEM_SCALE_ANNUAL_PRODUCT_ID ?? "",
+        "CREEM_SCALE_ANNUAL_PRODUCT_ID",
+      ),
+    },
   };
 }
 
 export function isPaidPlan(value: unknown): value is PaidPlanSlug {
-  return value === "starter" || value === "builder" || value === "pro" || value === "scale";
+  return typeof value === "string" && SELF_SERVE_PAID_PLAN_SLUGS.includes(value as PaidPlanSlug);
 }
 
-export function paidPlanCredits(plan: PaidPlanSlug): number {
-  return PLANS[plan].includedCredits;
+export function paidPlanCredits(
+  plan: PaidPlanSlug,
+  billingInterval: PaidBillingInterval = "month",
+): number {
+  return PLANS[plan].includedCredits * (billingInterval === "year" ? 12 : 1);
 }

@@ -15,7 +15,7 @@ create type public.platform as enum (
   'github'
 );
 create type public.request_status as enum ('queued', 'running', 'completed', 'failed', 'cancelled');
-create type public.plan_slug as enum ('trial', 'starter', 'builder', 'pro', 'scale');
+create type public.plan_slug as enum ('free', 'starter', 'pro', 'growth', 'scale', 'enterprise');
 create type public.provider as enum (
   'exa',
   'fetchlayer',
@@ -76,9 +76,10 @@ for each row execute function public.set_updated_at();
 create table public.plans (
   slug public.plan_slug primary key,
   name text not null,
-  billing_interval text not null check (billing_interval in ('one_time', 'month')),
-  price_cents integer not null check (price_cents >= 0),
-  included_credits integer not null check (included_credits >= 0),
+  billing_interval text not null check (billing_interval in ('one_time', 'month', 'custom')),
+  price_cents integer check (price_cents >= 0),
+  annual_price_cents integer check (annual_price_cents >= 0),
+  included_credits integer check (included_credits >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -87,24 +88,34 @@ create trigger plans_set_updated_at
 before update on public.plans
 for each row execute function public.set_updated_at();
 
-insert into public.plans (slug, name, billing_interval, price_cents, included_credits)
+insert into public.plans (
+  slug,
+  name,
+  billing_interval,
+  price_cents,
+  annual_price_cents,
+  included_credits
+)
 values
-  ('trial', 'Trial', 'one_time', 0, 50),
-  ('starter', 'Starter', 'month', 1900, 1500),
-  ('builder', 'Builder', 'month', 4900, 4000),
-  ('pro', 'Pro', 'month', 9900, 9000),
-  ('scale', 'Scale', 'month', 24900, 22000)
+  ('free', 'Free', 'one_time', 0, null, 250),
+  ('starter', 'Starter', 'month', 1900, 19000, 5000),
+  ('pro', 'Pro', 'month', 7900, 79000, 25000),
+  ('growth', 'Growth', 'month', 19900, 199000, 75000),
+  ('scale', 'Scale', 'month', 49900, 499000, 200000),
+  ('enterprise', 'Enterprise', 'custom', null, null, null)
 on conflict (slug) do update
 set
   name = excluded.name,
   billing_interval = excluded.billing_interval,
   price_cents = excluded.price_cents,
+  annual_price_cents = excluded.annual_price_cents,
   included_credits = excluded.included_credits;
 
 create table public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   plan_slug public.plan_slug not null references public.plans(slug) on delete restrict,
+  billing_interval text check (billing_interval in ('month', 'year')),
   status public.subscription_status not null,
   creem_customer_id text,
   creem_subscription_id text unique,
