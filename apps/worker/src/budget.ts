@@ -211,6 +211,7 @@ export class ResearchBudget {
       upstreamCostUsdNanos: bigint;
       billableUnits?: bigint;
       inputTokens?: number;
+      cachedInputTokens?: number;
       outputTokens?: number;
     },
   ): Promise<void> {

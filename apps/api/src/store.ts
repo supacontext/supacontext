@@ -198,7 +198,7 @@ function assertResolvedEffort(value: string): ResolvedEffort {
     return value as ResolvedEffort;
   }
 
-  return "low";
+  throw new Error(`Unknown resolved effort: ${value}`);
 }
 
 export class PostgresContextStore implements ContextStore {

@@ -126,15 +126,17 @@ export default function ApiReferencePage() {
               output tokens, and Auto routing. Effort sets the research profile and spending cap.
             </p>
             <p>
-              Before paid work, Supacontext atomically reserves the lower of the effort cap, the
-              caller&apos;s <code>max_credits</code>, and available balance. Work cannot exceed that
-              reservation. Settlement charges actual usage and releases unused credits.
+              Before paid work, Supacontext atomically reserves a budget within the selected
+              effort&apos;s cap and the caller&apos;s <code>max_credits</code>. The API returns
+              <code>budget_too_low</code> if <code>max_credits</code> is below the effort&apos;s
+              minimum budget, or <code>insufficient_credits</code> if the available balance cannot
+              fund that minimum. Work cannot exceed the reservation. Settlement charges actual usage
+              and releases unused credits.
             </p>
             <p>
-              The API rejects requests that cannot reserve enough for the selected effort before
-              paid work. Retrieval stops when the remaining reservation must be kept for synthesis,
-              and the response reports that gap. If safe synthesis no longer fits, the request
-              settles completed work and fails with <code>budget_exhausted</code>.
+              Retrieval stops when the remaining reservation must be kept for synthesis, and the
+              response reports that gap. If safe synthesis no longer fits, the request settles
+              completed work and fails with <code>budget_exhausted</code>.
             </p>
 
             <h2 id="effort-guide">Effort selection guide</h2>

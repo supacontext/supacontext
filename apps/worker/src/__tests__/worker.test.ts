@@ -569,6 +569,30 @@ describe("worker job lifecycle", () => {
     expect(store.committed).toBeLessThanOrEqual(store.request.effectiveCapMicrocredits);
   });
 
+  it("logs unexpected compilation errors while returning a fixed public message", async () => {
+    const store = new InMemoryWorkerStore();
+    const pipeline = new ResearchPipeline(providersFor(store), store);
+    const unexpectedError = new Error("Unexpected internal details.");
+    const logged: Array<{ error: unknown; requestId: string }> = [];
+    pipeline.run = async () => {
+      throw unexpectedError;
+    };
+    const processor = new ContextJobProcessor(
+      store,
+      pipeline,
+      new CapturingWebhookSender(),
+      (error, id) => logged.push({ error, requestId: id }),
+    );
+
+    const response = await processor.process(requestId);
+
+    expect(response).toMatchObject({
+      status: "failed",
+      error: { code: "model_error", message: "Context compilation failed." },
+    });
+    expect(logged).toEqual([{ error: unexpectedError, requestId }]);
+  });
+
   it("charges preserved token usage when a paid 2xx model response is unusable", async () => {
     const store = new InMemoryWorkerStore();
     const processor = new ContextJobProcessor(

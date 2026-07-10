@@ -68,13 +68,14 @@ export class ContextService {
 
     const idempotencyKey = this.parseIdempotencyKey(input.idempotencyKey);
     const platformSelection = this.resolvePlatforms(parsed.data.platforms);
+    const callerMaxCreditMicros =
+      parsed.data.max_credits === undefined
+        ? null
+        : creditDecimalToMicrocredits(parsed.data.max_credits);
     const idempotencyRequestHash = createContextRequestIdempotencyHash({
       query: parsed.data.query,
       effort: parsed.data.effort,
-      callerMaxCreditMicros:
-        parsed.data.max_credits === undefined
-          ? null
-          : creditDecimalToMicrocredits(parsed.data.max_credits),
+      callerMaxCreditMicros,
       platforms: platformSelection.platforms,
       platformMode: platformSelection.mode,
       async: parsed.data.async,
@@ -115,10 +116,7 @@ export class ContextService {
       plan,
       query: parsed.data.query,
       effort: parsed.data.effort,
-      callerMaxCreditMicros:
-        parsed.data.max_credits === undefined
-          ? null
-          : creditDecimalToMicrocredits(parsed.data.max_credits),
+      callerMaxCreditMicros,
       platforms: platformSelection.platforms,
       platformMode: platformSelection.mode,
       async: parsed.data.async,

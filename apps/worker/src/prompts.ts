@@ -122,7 +122,7 @@ function formatEvidence(evidence: AgentEvidenceInput): string {
   const timing =
     evidence.startSeconds === undefined
       ? ""
-      : `\nTimestamp: ${evidence.startSeconds}s${evidence.endSeconds === undefined || evidence.endSeconds === null ? "" : `-${evidence.endSeconds}s`}`;
+      : `Timestamp: ${evidence.startSeconds}s${evidence.endSeconds === undefined || evidence.endSeconds === null ? "" : `-${evidence.endSeconds}s`}`;
 
   return [
     `Source ID: ${evidence.sourceId}`,

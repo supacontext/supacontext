@@ -89,17 +89,20 @@ export function buildServer(
       logger: (input) => store.saveProviderCallLog(input),
     });
   const webhookSender = dependencies.webhookSender ?? new HttpWebhookSender();
-  const processor = new ContextJobProcessor(
-    store,
-    new ResearchPipeline(providers, store),
-    webhookSender,
-  );
   const server = Fastify({
     bodyLimit: 64 * 1024,
     logger: {
       level: env.LOG_LEVEL,
     },
   });
+  const processor = new ContextJobProcessor(
+    store,
+    new ResearchPipeline(providers, store),
+    webhookSender,
+    (error, requestId) => {
+      server.log.error({ err: error, requestId }, "Unexpected context compilation failure.");
+    },
+  );
 
   server.removeContentTypeParser("application/json");
   server.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
@@ -201,6 +204,8 @@ export class ContextJobProcessor {
     private readonly store: WorkerStore,
     private readonly pipeline: ResearchPipeline,
     private readonly webhookSender: WebhookSender,
+    private readonly logUnexpectedError: (error: unknown, requestId: string) => void = () =>
+      undefined,
   ) {}
 
   async process(requestId: string): Promise<ContextJobResponse> {
@@ -258,6 +263,11 @@ export class ContextJobProcessor {
       };
     } catch (error) {
       const failure = normalizeJobFailure(error);
+
+      if (failure.code === "model_error") {
+        this.logUnexpectedError(error, request.id);
+      }
+
       await this.store.failRequest(request.id, failure.code, failure.message);
       await this.sendWebhook(request, {
         id: request.id,

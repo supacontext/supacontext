@@ -201,6 +201,26 @@ function parseCallerMaxCreditMicros(value: unknown): bigint | null {
     throw new DashboardError(400, "INVALID_MAX_CREDITS", "Max credits must be a number.");
   }
 
+  if (!Number.isFinite(value) || value < 0) {
+    throw new DashboardError(
+      400,
+      "INVALID_MAX_CREDITS",
+      "Max credits must be a non-negative finite number.",
+    );
+  }
+
+  const maximumCredits = creditMicrocreditsToDisplayNumber(
+    EFFORT_PROFILES.auto.maximumCreditMicros,
+  );
+
+  if (value > maximumCredits) {
+    throw new DashboardError(
+      400,
+      "INVALID_MAX_CREDITS",
+      `Max credits must be greater than 0 and no more than ${maximumCredits}.`,
+    );
+  }
+
   let creditMicros: bigint;
 
   try {
@@ -217,7 +237,7 @@ function parseCallerMaxCreditMicros(value: unknown): bigint | null {
     throw new DashboardError(
       400,
       "INVALID_MAX_CREDITS",
-      "Max credits must be greater than 0 and no more than 250.",
+      `Max credits must be greater than 0 and no more than ${maximumCredits}.`,
     );
   }
 
