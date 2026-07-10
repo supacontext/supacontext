@@ -136,6 +136,13 @@ type PlaygroundApiKeyRow = {
   month_to_date_microcredits: string;
 };
 
+type WorkspaceContextRow = {
+  profile_id: string;
+  workspace_id: string;
+  email: string | null;
+  display_name: string | null;
+};
+
 export class DashboardError extends Error {
   constructor(
     readonly statusCode: number,
@@ -415,25 +422,14 @@ async function ensureWorkspaceForUser(input: {
       throw new DashboardError(500, "PROFILE_CREATE_FAILED", "Could not create profile.");
     }
 
-    let workspaceId = (
-      await transaction<Array<{ id: string }>>`
-        select id
-        from workspaces
-        where owner_profile_id = ${profileId}
-        order by created_at asc
-        limit 1
-      `
-    )[0]?.id;
-
-    if (!workspaceId) {
-      const workspaceRows = await transaction<Array<{ id: string }>>`
-        insert into workspaces (owner_profile_id, name)
-        values (${profileId}, ${input.displayName ? `${input.displayName}'s workspace` : "My workspace"})
-        returning id
-      `;
-
-      workspaceId = workspaceRows[0]?.id;
-    }
+    const workspaceRows = await transaction<Array<{ id: string }>>`
+      insert into workspaces (owner_profile_id, name)
+      values (${profileId}, ${input.displayName ? `${input.displayName}'s workspace` : "My workspace"})
+      on conflict (owner_profile_id) do update
+      set owner_profile_id = excluded.owner_profile_id
+      returning id
+    `;
+    const workspaceId = workspaceRows[0]?.id;
 
     if (!workspaceId) {
       throw new DashboardError(500, "WORKSPACE_CREATE_FAILED", "Could not create workspace.");
@@ -493,6 +489,44 @@ export async function getWorkspaceContext(): Promise<WorkspaceContext | null> {
 
   if (!user) {
     return null;
+  }
+
+  return getWorkspaceContextForUser(user);
+}
+
+export async function getWorkspaceContextForUser(user: User): Promise<WorkspaceContext | null> {
+  const rows = await getDatabase()<WorkspaceContextRow[]>`
+    select
+      profiles.id as profile_id,
+      workspaces.id as workspace_id,
+      profiles.email,
+      profiles.display_name
+    from profiles
+    join workspaces on workspaces.owner_profile_id = profiles.id
+    where profiles.workos_user_id = ${user.id}
+    order by workspaces.created_at asc
+    limit 1
+  `;
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    profileId: row.profile_id,
+    workspaceId: row.workspace_id,
+    workosUserId: user.id,
+    email: row.email,
+    displayName: row.display_name,
+  };
+}
+
+export async function provisionWorkspaceForUser(user: User): Promise<WorkspaceContext> {
+  const workspace = await getWorkspaceContextForUser(user);
+
+  if (workspace) {
+    return workspace;
   }
 
   return ensureWorkspaceForUser({

@@ -63,7 +63,7 @@ for each row execute function public.set_updated_at();
 
 create table public.workspaces (
   id uuid primary key default gen_random_uuid(),
-  owner_profile_id uuid not null references public.profiles(id) on delete restrict,
+  owner_profile_id uuid not null unique references public.profiles(id) on delete restrict,
   name text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

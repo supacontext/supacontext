@@ -9,6 +9,7 @@ Supacontext compiles public provider data into JSON-only context with citations,
 - `apps/web` - Next.js dashboard, docs, API-key management, usage, playground, billing UI, Creem dashboard routes.
 - `apps/api` - Public HTTP API. `POST /v1/context`, `GET /v1/context/:id`, `/health`.
 - `apps/worker` - QStash-triggered context worker. Runs provider orchestration and writes compiled public results.
+- `packages/cli` - CLI for browser login, API-key profiles, and structured context requests.
 - `packages/core` - product constants, effort profiles, auditable pricing, plans, validation, API-key hashing.
 - `packages/db` - Postgres client and typed query helpers.
 - `packages/billing` - typed Creem adapter, webhook signature verification, normalized billing events.
@@ -107,6 +108,74 @@ const result = created.status === "queued" ? await supacontext.context.poll(crea
 
 Examples live in `packages/sdk/examples`.
 
+## CLI
+
+Run the CLI from this repository with `pnpm cli`, or build `@supacontext/cli` to use its
+`supacontext` executable.
+
+Browser login uses WorkOS AuthKit's OAuth 2.0 Device Authorization flow. It opens the hosted
+sign-in/sign-up page, waits for approval, then uses the short-lived WorkOS access token to list or
+create Supacontext API keys. The WorkOS token is discarded after setup and is never stored. Because
+existing API-key values cannot be recovered, selecting an existing key asks for its value using a
+masked prompt.
+
+```bash
+# Interactive: list existing keys, select one, or create one.
+pnpm cli auth login
+
+# Agent/non-interactive: open the browser, wait, create a key, and emit result metadata as JSON.
+pnpm cli auth login --create-key "Agent CLI" --json
+
+# Configure an existing key using a masked prompt.
+pnpm cli auth set-key
+
+# For a non-interactive process, send the key over stdin instead of a command-line argument.
+pnpm cli auth set-key --key-stdin --profile agent --json
+
+pnpm cli auth status --json
+pnpm cli profile list --json
+pnpm cli profile use agent
+```
+
+Context commands always return the API's structured JSON. `--json` selects compact JSON suitable
+for agent parsing; without it, the same response is pretty-printed. In JSON mode, browser-login
+progress and the verification URL go to stderr so stdout remains one parseable JSON document.
+Agents can choose `--sync` to run inline and receive the completed result, or `--async` to queue
+the run and immediately receive its request ID. Synchronous execution is the default when neither
+flag is present. `--wait` queues an asynchronous run and polls it to completion in the CLI.
+
+```bash
+pnpm cli context create "What changed in agent tooling this week?" \
+  --depth auto \
+  --source web,reddit,github \
+  --max-credits 50 \
+  --sync \
+  --json
+
+pnpm cli context create "Summarize current discussions" \
+  --effort high \
+  --platform forums \
+  --async \
+  --json
+
+pnpm cli context get ctx_... --wait --json
+```
+
+`--depth` is an agent-friendly alias for `--effort`, and `--source` is an alias for `--platform`.
+Supported values are the same as the public API. Create also supports `--webhook-url`, `--metadata`,
+and `--idempotency-key`.
+
+Profiles are stored in the conventional per-user configuration directory:
+
+- Windows: `%APPDATA%\\supacontext\\config.json`
+- macOS: `~/Library/Application Support/supacontext/config.json`
+- Linux: `$XDG_CONFIG_HOME/supacontext/config.json` or `~/.config/supacontext/config.json`
+
+The CLI creates the directory and file with user-only permissions where the operating system
+supports POSIX modes. It never includes stored key values in status, profile, login, or error
+output. `SUPACONTEXT_API_KEY`, `SUPACONTEXT_API_URL`, `SUPACONTEXT_APP_URL`, and
+`SUPACONTEXT_PROFILE` can override saved configuration without modifying it.
+
 ## Environment Variables
 
 Local development uses one root env file:
@@ -135,6 +204,7 @@ Web and WorkOS AuthKit:
 - `WORKOS_CLIENT_ID`
 - `WORKOS_API_KEY`
 - `WORKOS_COOKIE_PASSWORD` at least 32 characters
+- `WORKOS_AUTHKIT_DOMAIN` optional custom AuthKit domain used as the access-token issuer
 - `NEXT_PUBLIC_WORKOS_REDIRECT_URI` for example `http://localhost:3000/callback`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
@@ -144,6 +214,10 @@ Configure the WorkOS dashboard Redirects settings for each environment:
 - Redirect URI: `<APP_URL>/callback`
 - Sign-in endpoint: `<APP_URL>/sign-in`
 - Sign-out redirect: `<APP_URL>`
+
+Enable AuthKit CLI Auth for the WorkOS environment used by the web app. The CLI discovers the
+public WorkOS client ID and API URL from `<APP_URL>/api/cli/config`; no WorkOS secret is shipped in
+the CLI.
 
 API:
 
