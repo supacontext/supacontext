@@ -193,14 +193,12 @@ class InMemoryContextStore implements ContextStore {
         }
       }
 
-      if (input.async) {
-        const active = [...this.requests.values()].filter(
-          (request) => request.status === "queued" || request.status === "running",
-        ).length;
-        const concurrentJobs = PLAN_RATE_LIMITS[input.plan].concurrentJobs;
-        if (concurrentJobs !== null && active >= concurrentJobs) {
-          throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
-        }
+      const active = [...this.requests.values()].filter(
+        (request) => request.status === "queued" || request.status === "running",
+      ).length;
+      const concurrentJobs = PLAN_RATE_LIMITS[input.plan].concurrentJobs;
+      if (concurrentJobs !== null && active >= concurrentJobs) {
+        throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
       }
 
       const authorization = authorizeUsage({

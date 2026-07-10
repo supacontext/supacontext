@@ -7,12 +7,42 @@ describe("subscription plans", () => {
     expect(PLAN_SLUGS).toEqual(["free", "starter", "pro", "growth", "scale", "enterprise"]);
     expect(SELF_SERVE_PAID_PLAN_SLUGS).toEqual(["starter", "pro", "growth", "scale"]);
     expect(PLANS).toMatchObject({
-      free: { priceCents: 0, annualPriceCents: null, includedCredits: 250 },
-      starter: { priceCents: 1900, annualPriceCents: 19000, includedCredits: 5_000 },
-      pro: { priceCents: 7900, annualPriceCents: 79000, includedCredits: 25_000 },
-      growth: { priceCents: 19900, annualPriceCents: 199000, includedCredits: 75_000 },
-      scale: { priceCents: 49900, annualPriceCents: 499000, includedCredits: 200_000 },
-      enterprise: { priceCents: null, annualPriceCents: null, includedCredits: null },
+      free: {
+        billingInterval: "one_time",
+        priceCents: 0,
+        annualPriceCents: null,
+        includedCredits: 250,
+      },
+      starter: {
+        billingInterval: "month",
+        priceCents: 1900,
+        annualPriceCents: 19000,
+        includedCredits: 5_000,
+      },
+      pro: {
+        billingInterval: "month",
+        priceCents: 7900,
+        annualPriceCents: 79000,
+        includedCredits: 25_000,
+      },
+      growth: {
+        billingInterval: "month",
+        priceCents: 19900,
+        annualPriceCents: 199000,
+        includedCredits: 75_000,
+      },
+      scale: {
+        billingInterval: "month",
+        priceCents: 49900,
+        annualPriceCents: 499000,
+        includedCredits: 200_000,
+      },
+      enterprise: {
+        billingInterval: "custom",
+        priceCents: null,
+        annualPriceCents: null,
+        includedCredits: null,
+      },
     });
     expect(getPlanIncludedCredits("pro")).toBe(25_000);
   });

@@ -25,7 +25,7 @@ export function formatMoney(cents: number): string {
 }
 
 export function formatAnnualMonthlyPrice(annualPriceCents: number): string {
-  return formatMoney(Math.round(annualPriceCents / 1200) * 100);
+  return formatMoney(Math.round(annualPriceCents / 12));
 }
 
 export function formatDateTime(value: Date | string | null | undefined): string {
