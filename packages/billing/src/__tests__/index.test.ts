@@ -1,12 +1,12 @@
 import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CreemBillingClient, verifyCreemSignature } from "../index.js";
+import { CreemBillingClient, paidPlanCredits, verifyCreemSignature } from "../index.js";
 
 const productIds = {
-  starter: "prod_starter",
-  builder: "prod_builder",
-  pro: "prod_pro",
-  scale: "prod_scale",
+  starter: { month: "prod_starter_month", year: "prod_starter_year" },
+  pro: { month: "prod_pro_month", year: "prod_pro_year" },
+  growth: { month: "prod_growth_month", year: "prod_growth_year" },
+  scale: { month: "prod_scale_month", year: "prod_scale_year" },
 };
 
 function sign(payload: string, secret = "webhook_secret"): string {
@@ -36,6 +36,12 @@ describe("Creem billing adapter", () => {
     vi.unstubAllGlobals();
   });
 
+  it("grants the advertised monthly credits for monthly and annual billing", () => {
+    expect(paidPlanCredits("starter", "month")).toBe(5_000);
+    expect(paidPlanCredits("starter", "year")).toBe(60_000);
+    expect(paidPlanCredits("growth", "month")).toBe(75_000);
+  });
+
   it("verifies webhook signatures with timing-safe HMAC comparison", () => {
     const payload = JSON.stringify({ id: "evt_1" });
     const signature = `t=1,v1=${sign(payload)}`;
@@ -55,7 +61,7 @@ describe("Creem billing adapter", () => {
         id: "cus_1",
       },
       product: {
-        id: "prod_builder",
+        id: "prod_growth_year",
       },
       status: "active",
       current_period_end_date: "2026-08-01T00:00:00.000Z",
@@ -68,7 +74,8 @@ describe("Creem billing adapter", () => {
       externalId: "evt_subscription_active",
       eventType: "subscription.active",
       workspaceId: "workspace_1",
-      plan: "builder",
+      plan: "growth",
+      billingInterval: "year",
       customerId: "cus_1",
       subscriptionId: "sub_1",
       status: "active",
@@ -80,7 +87,7 @@ describe("Creem billing adapter", () => {
       id: "sub_1",
       last_transaction_id: "tran_1",
       customer: "cus_1",
-      product: "prod_pro",
+      product: "prod_pro_month",
       metadata: {
         workspace_id: "workspace_1",
         plan: "pro",
@@ -92,6 +99,7 @@ describe("Creem billing adapter", () => {
       eventType: "subscription.paid",
       workspaceId: "workspace_1",
       plan: "pro",
+      billingInterval: "month",
       paymentId: "tran_1",
       subscriptionId: "sub_1",
     });
@@ -103,20 +111,20 @@ describe("Creem billing adapter", () => {
       order: {
         id: "ord_1",
         customer: "cus_1",
-        product: "prod_builder",
+        product: "prod_growth_month",
       },
       subscription: {
         id: "sub_1",
         metadata: {
           workspace_id: "workspace_1",
-          plan: "builder",
+          plan: "growth",
         },
       },
       customer: {
         id: "cus_1",
       },
       product: {
-        id: "prod_builder",
+        id: "prod_growth_month",
       },
       status: "completed",
     });
@@ -124,7 +132,8 @@ describe("Creem billing adapter", () => {
     await expect(createClient().parseWebhook(payload, sign(payload))).resolves.toMatchObject({
       eventType: "checkout.completed",
       workspaceId: "workspace_1",
-      plan: "builder",
+      plan: "growth",
+      billingInterval: "month",
       customerId: "cus_1",
       subscriptionId: "sub_1",
       paymentId: "ord_1",
@@ -136,7 +145,7 @@ describe("Creem billing adapter", () => {
     const canceled = webhookPayload("subscription.canceled", {
       id: "sub_1",
       customer: "cus_1",
-      product: "prod_starter",
+      product: "prod_starter_month",
       status: "canceled",
       metadata: {
         workspace_id: "workspace_1",
@@ -145,7 +154,7 @@ describe("Creem billing adapter", () => {
     const pastDue = webhookPayload("subscription.past_due", {
       id: "sub_2",
       customer: "cus_2",
-      product: "prod_scale",
+      product: "prod_scale_month",
       status: "past_due",
       metadata: {
         workspace_id: "workspace_2",
@@ -169,7 +178,7 @@ describe("Creem billing adapter", () => {
       id: "sub_1",
       last_transaction_id: "tran_1",
       customer: "cus_1",
-      product: "prod_pro",
+      product: "prod_pro_month",
       metadata: {
         workspace_id: "workspace_1",
       },
@@ -192,7 +201,8 @@ describe("Creem billing adapter", () => {
 
     const session = await createClient().createCheckoutSession({
       workspaceId: "workspace_1",
-      plan: "builder",
+      plan: "growth",
+      billingInterval: "year",
       successUrl: "https://app.example.com/success",
       cancelUrl: "https://app.example.com/cancel",
     });
@@ -205,11 +215,12 @@ describe("Creem billing adapter", () => {
       "x-api-key": "creem_key",
     });
     expect(JSON.parse(init.body as string)).toMatchObject({
-      product_id: "prod_builder",
+      product_id: "prod_growth_year",
       request_id: "workspace_1",
       metadata: {
         workspace_id: "workspace_1",
-        plan: "builder",
+        plan: "growth",
+        billing_interval: "year",
       },
     });
     expect(session.url).toBe("https://checkout.creem.io/chk_1");

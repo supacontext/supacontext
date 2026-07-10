@@ -116,8 +116,9 @@ export default function ApiReferencePage() {
                 <div className="row" key={plan}>
                   <span>{plan}</span>
                   <strong>
-                    {limits.requestsPerMinute}/min - {limits.concurrentJobs} concurrent -{" "}
-                    {limits.deepConcurrentJobs} deep
+                    {limits.requestsPerMinute === null
+                      ? "Custom rate and concurrency limits"
+                      : `${limits.requestsPerMinute}/min - ${limits.concurrentJobs} concurrent`}
                   </strong>
                 </div>
               ))}

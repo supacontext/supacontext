@@ -2,6 +2,7 @@ import {
   DashboardError,
   createBillingCheckout,
   getWorkspaceContext,
+  parsePaidBillingInterval,
   parsePaidPlan,
 } from "../../../../../lib/server/dashboard";
 
@@ -41,14 +42,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { plan?: unknown };
+    const body = (await request.json()) as { plan?: unknown; billingInterval?: unknown };
     const plan = parsePaidPlan(body.plan);
+    const billingInterval = parsePaidBillingInterval(body.billingInterval);
 
-    if (!plan) {
-      throw new DashboardError(400, "INVALID_PLAN", "Choose a paid plan.");
+    if (!plan || !billingInterval) {
+      throw new DashboardError(400, "INVALID_PLAN", "Choose a paid plan and billing interval.");
     }
 
-    const url = await createBillingCheckout(workspace.workspaceId, plan);
+    const url = await createBillingCheckout(workspace.workspaceId, plan, billingInterval);
 
     return Response.json({ url });
   } catch (error) {

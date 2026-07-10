@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   CONTEXT_DEPTHS,
   PLAN_RATE_LIMITS,
+  PLAN_SLUGS,
   type ContextDepth,
   type Platform,
   type PlatformMode,
@@ -174,17 +175,7 @@ function mapUsageDenial(
 }
 
 function assertPlanSlug(value: string): PlanSlug {
-  if (
-    value === "trial" ||
-    value === "starter" ||
-    value === "builder" ||
-    value === "pro" ||
-    value === "scale"
-  ) {
-    return value;
-  }
-
-  return "trial";
+  return PLAN_SLUGS.includes(value as PlanSlug) ? (value as PlanSlug) : "free";
 }
 
 function assertDepth(value: ContextDepth): ContextDepth {
@@ -218,7 +209,7 @@ export class PostgresContextStore implements ContextStore {
       limit 1
     `;
 
-    return assertPlanSlug(rows[0]?.plan_slug ?? "trial");
+    return assertPlanSlug(rows[0]?.plan_slug ?? "free");
   }
 
   async findRequestById(
@@ -639,10 +630,6 @@ export class PostgresContextStore implements ContextStore {
     transaction: postgres.TransactionSql,
     input: AcceptContextRequestInput,
   ): Promise<void> {
-    if (!input.async) {
-      return;
-    }
-
     const limits = PLAN_RATE_LIMITS[input.plan];
     const activeRows = await transaction<Array<{ count: number }>>`
       select count(*)::int as count
@@ -651,24 +638,8 @@ export class PostgresContextStore implements ContextStore {
         and status in ('queued', 'running')
     `;
 
-    if ((activeRows[0]?.count ?? 0) >= limits.concurrentJobs) {
+    if (limits.concurrentJobs !== null && (activeRows[0]?.count ?? 0) >= limits.concurrentJobs) {
       throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
-    }
-
-    if (input.depth !== "deep") {
-      return;
-    }
-
-    const deepRows = await transaction<Array<{ count: number }>>`
-      select count(*)::int as count
-      from context_requests
-      where workspace_id = ${input.apiKey.workspace_id}
-        and status in ('queued', 'running')
-        and depth = 'deep'
-    `;
-
-    if ((deepRows[0]?.count ?? 0) >= limits.deepConcurrentJobs) {
-      throw new ApiError(429, "rate_limited", "Concurrent deep job limit exceeded.");
     }
   }
 

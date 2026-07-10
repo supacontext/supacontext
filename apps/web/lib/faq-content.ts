@@ -66,7 +66,7 @@ export const faqs: FAQ[] = [
   {
     question: "How does Supacontext pricing work?",
     answer:
-      "Supacontext uses credits. Each request charges based on the selected depth, and every new account includes 50 free trial credits so you can test real agent workflows before upgrading.",
+      "Supacontext uses credits. Each request charges based on the selected depth, and every new account includes 250 free credits so you can test real agent workflows before upgrading.",
   },
 ];
 

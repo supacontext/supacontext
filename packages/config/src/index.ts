@@ -55,10 +55,14 @@ const workosSchema = {
 const creemSchema = {
   CREEM_API_KEY: requiredString,
   CREEM_WEBHOOK_SECRET: requiredString,
-  CREEM_STARTER_PRODUCT_ID: requiredString,
-  CREEM_BUILDER_PRODUCT_ID: requiredString,
-  CREEM_PRO_PRODUCT_ID: requiredString,
-  CREEM_SCALE_PRODUCT_ID: requiredString,
+  CREEM_STARTER_MONTHLY_PRODUCT_ID: requiredString,
+  CREEM_STARTER_ANNUAL_PRODUCT_ID: requiredString,
+  CREEM_PRO_MONTHLY_PRODUCT_ID: requiredString,
+  CREEM_PRO_ANNUAL_PRODUCT_ID: requiredString,
+  CREEM_GROWTH_MONTHLY_PRODUCT_ID: requiredString,
+  CREEM_GROWTH_ANNUAL_PRODUCT_ID: requiredString,
+  CREEM_SCALE_MONTHLY_PRODUCT_ID: requiredString,
+  CREEM_SCALE_ANNUAL_PRODUCT_ID: requiredString,
 };
 
 const upstashSchema = {

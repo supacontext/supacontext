@@ -95,7 +95,7 @@ class InMemoryContextStore implements ContextStore {
   private nextRequestNumber = 1;
 
   constructor(
-    plan: PlanSlug = "builder",
+    plan: PlanSlug = "pro",
     private balance = 500,
     maxDepth: ContextDepth = "deep",
   ) {
@@ -145,7 +145,7 @@ class InMemoryContextStore implements ContextStore {
   }
 
   async getWorkspacePlan(workspaceIdToRead: string): Promise<PlanSlug> {
-    return this.plans.get(workspaceIdToRead) ?? "trial";
+    return this.plans.get(workspaceIdToRead) ?? "free";
   }
 
   async findRequestById(
@@ -180,12 +180,11 @@ class InMemoryContextStore implements ContextStore {
     return request;
   }
 
-  async countActiveJobs(workspaceIdToRead: string, depth?: ContextDepth): Promise<number> {
+  async countActiveJobs(workspaceIdToRead: string): Promise<number> {
     return [...this.requests.values()].filter(
       (request) =>
         request.workspace_id === workspaceIdToRead &&
-        (request.status === "queued" || request.status === "running") &&
-        (!depth || request.depth === depth),
+        (request.status === "queued" || request.status === "running"),
     ).length;
   }
 
@@ -216,21 +215,11 @@ class InMemoryContextStore implements ContextStore {
         }
       }
 
-      if (input.async) {
-        const limits = PLAN_RATE_LIMITS[input.plan];
-        const activeJobs = await this.countActiveJobs(input.apiKey.workspace_id);
+      const limits = PLAN_RATE_LIMITS[input.plan];
+      const activeJobs = await this.countActiveJobs(input.apiKey.workspace_id);
 
-        if (activeJobs >= limits.concurrentJobs) {
-          throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
-        }
-
-        if (input.depth === "deep") {
-          const activeDeepJobs = await this.countActiveJobs(input.apiKey.workspace_id, "deep");
-
-          if (activeDeepJobs >= limits.deepConcurrentJobs) {
-            throw new ApiError(429, "rate_limited", "Concurrent deep job limit exceeded.");
-          }
-        }
+      if (limits.concurrentJobs !== null && activeJobs >= limits.concurrentJobs) {
+        throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
       }
 
       const apiKey = this.apiKey;
@@ -512,18 +501,18 @@ describe("context API routes", () => {
   });
 
   it("enforces plan and API key depth restrictions", async () => {
-    const trialServer = buildServer(createEnv(), {
-      store: new InMemoryContextStore("trial", 500, "deep"),
+    const freeServer = buildServer(createEnv(), {
+      store: new InMemoryContextStore("free", 500, "deep"),
       rateLimiter: new AllowRateLimiter(),
       qstash: new CapturingQstashClient(),
     });
     const keyLimitServer = buildServer(createEnv(), {
-      store: new InMemoryContextStore("builder", 500, "standard"),
+      store: new InMemoryContextStore("pro", 500, "standard"),
       rateLimiter: new AllowRateLimiter(),
       qstash: new CapturingQstashClient(),
     });
 
-    const trialResponse = await trialServer.inject({
+    const freeResponse = await freeServer.inject({
       method: "POST",
       url: "/v1/context",
       headers: authHeaders(),
@@ -542,17 +531,17 @@ describe("context API routes", () => {
       },
     });
 
-    expect(trialResponse.statusCode).toBe(403);
-    expect(trialResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
+    expect(freeResponse.statusCode).toBe(403);
+    expect(freeResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
     expect(keyLimitResponse.statusCode).toBe(403);
     expect(keyLimitResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
 
-    await trialServer.close();
+    await freeServer.close();
     await keyLimitServer.close();
   });
 
   it("deducts credits once and returns a completed synchronous worker result", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
@@ -607,7 +596,7 @@ describe("context API routes", () => {
   });
 
   it("does not double-charge idempotent retries", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
@@ -639,7 +628,7 @@ describe("context API routes", () => {
   });
 
   it("rejects idempotency-key reuse with a different request body", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
@@ -679,7 +668,7 @@ describe("context API routes", () => {
   });
 
   it("refunds credits when asynchronous enqueue fails", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
@@ -709,7 +698,7 @@ describe("context API routes", () => {
   });
 
   it("refunds credits when the synchronous worker call throws", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
@@ -747,7 +736,7 @@ describe("context API routes", () => {
   });
 
   it("refunds credits when the synchronous worker skips processing", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),
@@ -785,7 +774,7 @@ describe("context API routes", () => {
   });
 
   it("queues asynchronous requests and exposes status through GET", async () => {
-    const store = new InMemoryContextStore("builder", 100);
+    const store = new InMemoryContextStore("pro", 100);
     const qstash = new CapturingQstashClient();
     const server = buildServer(createEnv(), {
       store,
@@ -836,7 +825,7 @@ describe("context API routes", () => {
   });
 
   it("enforces async concurrency while accepting requests", async () => {
-    const store = new InMemoryContextStore("trial", 100);
+    const store = new InMemoryContextStore("free", 100);
     const server = buildServer(createEnv(), {
       store,
       rateLimiter: new AllowRateLimiter(),

@@ -1,11 +1,20 @@
 "use client";
 
+import type { PaidBillingInterval, SelfServePaidPlanSlug } from "@supacontext/core";
 import { CreditCard, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
-type PaidPlan = "starter" | "builder" | "pro" | "scale";
-
-export function BillingActionButton({ plan, label }: { plan: PaidPlan; label: string }) {
+export function BillingActionButton({
+  plan,
+  billingInterval,
+  disabled = false,
+  label,
+}: {
+  plan: SelfServePaidPlanSlug;
+  billingInterval: PaidBillingInterval;
+  disabled?: boolean;
+  label: string;
+}) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -19,7 +28,7 @@ export function BillingActionButton({ plan, label }: { plan: PaidPlan; label: st
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, billingInterval }),
       });
       const data = (await response.json()) as { url?: string; error?: { message?: string } };
 
@@ -38,7 +47,7 @@ export function BillingActionButton({ plan, label }: { plan: PaidPlan; label: st
     <div className="billingAction">
       <button
         className="button primaryButton fullButton"
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={checkout}
         type="button"
       >

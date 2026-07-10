@@ -17,7 +17,7 @@ describe("usage authorization", () => {
   it("rejects plan-restricted depths", () => {
     expect(
       authorizeUsage({
-        plan: "trial",
+        plan: "free",
         depth: "deep",
         balance: 100,
       }),
