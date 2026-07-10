@@ -10,7 +10,7 @@ import {
   type BillingWebhookEvent,
   type PaidPlanSlug,
 } from "@supacontext/billing";
-import type { PaidBillingInterval } from "@supacontext/core";
+import { CREDIT_MICROS, type PaidBillingInterval } from "@supacontext/core";
 import { createDatabaseClient, type DatabaseClient } from "@supacontext/db";
 import type postgres from "postgres";
 import { webEnv } from "./env";
@@ -243,14 +243,14 @@ async function grantBillingPeriodCredits(
     insert into usage_ledger (
       workspace_id,
       event_type,
-      credits,
+      credit_microcredits,
       idempotency_key,
       metadata
     )
     values (
       ${workspaceId},
       'grant'::ledger_event_type,
-      ${paidPlanCredits(plan, billingInterval)},
+      ${(BigInt(paidPlanCredits(plan, billingInterval)) * CREDIT_MICROS).toString()},
       ${`creem:payment:${event.paymentId ?? event.externalId}:credits`},
       ${transaction.json({
         provider: "creem",
@@ -274,7 +274,7 @@ async function grantBillingPeriodCredits(
 
   await transaction`
     update api_keys
-    set month_to_date_credits = 0
+    set month_to_date_microcredits = 0
     where workspace_id = ${workspaceId}
   `;
 }

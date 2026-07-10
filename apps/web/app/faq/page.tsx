@@ -7,7 +7,7 @@ import { faqs } from "../../lib/faq-content";
 export const metadata: Metadata = {
   title: "FAQ | Supacontext",
   description:
-    "Answers about Supacontext, the context API for AI agents that returns compact, cited JSON from public web, Reddit, X, and YouTube sources.",
+    "Answers about Supacontext, the context API for AI agents that returns compact, cited JSON from 11 public platforms.",
 };
 
 export default function FAQPage() {

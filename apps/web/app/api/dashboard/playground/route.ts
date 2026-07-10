@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       status: result.status,
       result,
       creditsCharged: result.usage.credits_charged,
+      creditsReserved: result.usage.credits_reserved,
       sourcesUsed: result.usage.sources_used,
     });
   } catch (error) {

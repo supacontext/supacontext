@@ -1,21 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { ApiEnv } from "@supacontext/config";
 import {
-  getDepthCreditCost,
-  hashApiKey,
+  CREDIT_MICROS,
   PLAN_RATE_LIMITS,
-  type ContextDepth,
+  creditMicrocreditsToDisplayNumber,
+  hashApiKey,
   type PlanSlug,
   type RequestStatus,
+  type ResolvedEffort,
 } from "@supacontext/core";
 import type { ApiKeyRow } from "@supacontext/db";
 import { authorizeUsage } from "@supacontext/usage";
 import { ApiError } from "../errors.js";
-import {
-  toPublicContextResponse,
-  type StoredContextRequest,
-  type StoredContextResultPayload,
-} from "../public-response.js";
 import type { EnqueueContextJobInput, EnqueueContextJobResult, QstashClient } from "../qstash.js";
 import type { RateLimitInput, RateLimitResult, RateLimiter } from "../rate-limit.js";
 import { buildServer } from "../server.js";
@@ -24,8 +20,12 @@ import {
   type AcceptContextRequestInput,
   type AcceptContextRequestResult,
   type ContextStore,
-  type FailContextRequestOptions,
 } from "../store.js";
+import {
+  toPublicContextResponse,
+  type StoredContextRequest,
+  type StoredContextResultPayload,
+} from "../public-response.js";
 import type { ContextJobRunner, ContextJobRunResult } from "../worker-runner.js";
 
 const secret = "test-secret-with-at-least-32-characters";
@@ -66,10 +66,7 @@ class CapturingQstashClient implements QstashClient {
 
   async enqueueContextJob(input: EnqueueContextJobInput): Promise<EnqueueContextJobResult> {
     this.jobs.push(input);
-
-    return {
-      messageId: `msg_${input.requestId}`,
-    };
+    return { messageId: `msg_${input.requestId}` };
   }
 }
 
@@ -86,66 +83,59 @@ type InternalRequest = StoredContextRequest & {
 };
 
 class InMemoryContextStore implements ContextStore {
-  readonly ledger: Array<{ requestId: string; credits: number }> = [];
-  private readonly apiKeysByHash = new Map<string, ApiKeyRow>();
-  private readonly apiKeysById = new Map<string, ApiKeyRow>();
+  readonly ledger: Array<{ requestId: string; creditMicrocredits: bigint }> = [];
   private readonly requests = new Map<string, InternalRequest>();
-  private readonly plans = new Map<string, PlanSlug>();
   private acceptLock: Promise<void> = Promise.resolve();
-  private nextRequestNumber = 1;
+  private requestNumber = 1;
+  private balanceMicrocredits: bigint;
+  readonly apiKey: ApiKeyRow;
 
   constructor(
-    plan: PlanSlug = "pro",
-    private balance = 500,
-    maxDepth: ContextDepth = "deep",
+    input: {
+      balanceCredits?: number;
+      maxEffort?: ResolvedEffort;
+      monthlyLimitCredits?: number | null;
+      plan?: PlanSlug;
+    } = {},
   ) {
-    const apiKey: ApiKeyRow = {
+    this.balanceMicrocredits = BigInt(input.balanceCredits ?? 500) * CREDIT_MICROS;
+    this.plan = input.plan ?? "pro";
+    this.apiKey = {
       id: apiKeyId,
       workspace_id: workspaceId,
       name: "Test key",
       key_hash: hashApiKey(rawKey, secret),
       prefix: rawKey.slice(0, 16),
-      max_depth: maxDepth,
-      monthly_credit_limit: null,
-      month_to_date_credits: 0,
+      max_effort: input.maxEffort ?? "x_high",
+      monthly_credit_limit_microcredits:
+        input.monthlyLimitCredits === undefined || input.monthlyLimitCredits === null
+          ? null
+          : BigInt(input.monthlyLimitCredits) * CREDIT_MICROS,
+      month_to_date_microcredits: 0n,
       last_used_at: null,
       revoked_at: null,
       created_at: new Date(),
     };
-
-    this.apiKeysByHash.set(apiKey.key_hash, apiKey);
-    this.apiKeysById.set(apiKey.id, apiKey);
-    this.plans.set(workspaceId, plan);
   }
 
-  get currentBalance(): number {
-    return this.balance;
-  }
+  private readonly plan: PlanSlug;
 
-  get apiKey(): ApiKeyRow {
-    const apiKey = this.apiKeysById.get(apiKeyId);
-
-    if (!apiKey) {
-      throw new Error("Missing test API key.");
-    }
-
-    return apiKey;
+  get balance(): number {
+    return creditMicrocreditsToDisplayNumber(this.balanceMicrocredits);
   }
 
   async findApiKeyByHash(keyHash: string): Promise<ApiKeyRow | null> {
-    return this.apiKeysByHash.get(keyHash) ?? null;
+    return keyHash === this.apiKey.key_hash ? this.apiKey : null;
   }
 
   async markApiKeyUsed(apiKeyIdToMark: string): Promise<void> {
-    const apiKey = this.apiKeysById.get(apiKeyIdToMark);
-
-    if (apiKey) {
-      apiKey.last_used_at = new Date();
+    if (apiKeyIdToMark === this.apiKey.id) {
+      this.apiKey.last_used_at = new Date();
     }
   }
 
-  async getWorkspacePlan(workspaceIdToRead: string): Promise<PlanSlug> {
-    return this.plans.get(workspaceIdToRead) ?? "free";
+  async getWorkspacePlan(_workspaceId: string): Promise<PlanSlug> {
+    return this.plan;
   }
 
   async findRequestById(
@@ -153,7 +143,6 @@ class InMemoryContextStore implements ContextStore {
     requestId: string,
   ): Promise<StoredContextRequest | null> {
     const request = this.requests.get(requestId);
-
     return request?.workspace_id === workspaceIdToRead ? request : null;
   }
 
@@ -164,9 +153,9 @@ class InMemoryContextStore implements ContextStore {
   ): Promise<StoredContextRequest | null> {
     const request =
       [...this.requests.values()].find(
-        (storedRequest) =>
-          storedRequest.workspace_id === workspaceIdToRead &&
-          storedRequest.idempotency_key === idempotencyKey,
+        (candidate) =>
+          candidate.workspace_id === workspaceIdToRead &&
+          candidate.idempotency_key === idempotencyKey,
       ) ?? null;
 
     if (request && request.idempotency_request_hash !== idempotencyRequestHash) {
@@ -180,127 +169,88 @@ class InMemoryContextStore implements ContextStore {
     return request;
   }
 
-  async countActiveJobs(workspaceIdToRead: string): Promise<number> {
-    return [...this.requests.values()].filter(
-      (request) =>
-        request.workspace_id === workspaceIdToRead &&
-        (request.status === "queued" || request.status === "running"),
-    ).length;
-  }
-
   async acceptContextRequest(
     input: AcceptContextRequestInput,
   ): Promise<AcceptContextRequestResult> {
-    const previousAccept = this.acceptLock;
-    let releaseAccept: () => void = () => {};
-
+    const previous = this.acceptLock;
+    let unlock: () => void = () => {};
     this.acceptLock = new Promise((resolve) => {
-      releaseAccept = resolve;
+      unlock = resolve;
     });
-    await previousAccept;
+    await previous;
 
     try {
+      const requestHash = createContextRequestIdempotencyHash(input);
+
       if (input.idempotencyKey) {
         const existing = await this.findRequestByIdempotencyKey(
           input.apiKey.workspace_id,
           input.idempotencyKey,
-          createContextRequestIdempotencyHash(input),
+          requestHash,
         );
-
         if (existing) {
-          return {
-            request: existing,
-            created: false,
-          };
+          return { request: existing, created: false };
         }
       }
 
-      const limits = PLAN_RATE_LIMITS[input.plan];
-      const activeJobs = await this.countActiveJobs(input.apiKey.workspace_id);
-
-      if (limits.concurrentJobs !== null && activeJobs >= limits.concurrentJobs) {
-        throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
+      if (input.async) {
+        const active = [...this.requests.values()].filter(
+          (request) => request.status === "queued" || request.status === "running",
+        ).length;
+        const concurrentJobs = PLAN_RATE_LIMITS[input.plan].concurrentJobs;
+        if (concurrentJobs !== null && active >= concurrentJobs) {
+          throw new ApiError(429, "rate_limited", "Concurrent job limit exceeded.");
+        }
       }
 
-      const apiKey = this.apiKey;
       const authorization = authorizeUsage({
-        plan: input.plan,
-        depth: input.depth,
-        balance: this.balance,
-        apiKeyMaxDepth: apiKey.max_depth,
-        monthlyCreditLimit: apiKey.monthly_credit_limit,
-        monthToDateCredits: apiKey.month_to_date_credits,
+        effort: input.effort,
+        balanceCreditMicros: this.balanceMicrocredits,
+        callerMaxCreditMicros: input.callerMaxCreditMicros,
+        apiKeyMaxEffort: this.apiKey.max_effort,
+        monthlyCreditLimitMicros: this.apiKey.monthly_credit_limit_microcredits,
+        monthToDateCreditMicros: this.apiKey.month_to_date_microcredits,
       });
 
       if (!authorization.allowed) {
-        if (authorization.reason === "credits") {
-          throw new ApiError(402, "insufficient_credits", "Insufficient account credits.");
+        if (authorization.reason === "api_key_effort_restricted") {
+          throw new ApiError(403, "forbidden_effort", "Effort is restricted for this key.");
         }
-
-        if (authorization.reason === "monthly_limit") {
-          throw new ApiError(
-            402,
-            "insufficient_credits",
-            "API key monthly credit limit would be exceeded.",
-          );
+        if (authorization.reason === "caller_cap") {
+          throw new ApiError(402, "budget_too_low", "max_credits is too low.");
         }
-
-        throw new ApiError(
-          403,
-          "forbidden_depth",
-          "Requested depth is not allowed for this API key or plan.",
-        );
+        throw new ApiError(402, "insufficient_credits", "Insufficient credits.");
       }
 
-      const credits = getDepthCreditCost(input.depth);
+      const cap = authorization.reservationCreditMicros;
       const request: InternalRequest = {
-        id: `ctx_test_${this.nextRequestNumber}`,
+        id: `ctx_test_${this.requestNumber}`,
         workspace_id: input.apiKey.workspace_id,
         idempotency_key: input.idempotencyKey,
-        idempotency_request_hash: input.idempotencyKey
-          ? createContextRequestIdempotencyHash(input)
-          : null,
+        idempotency_request_hash: input.idempotencyKey ? requestHash : null,
         query: input.query,
-        depth: input.depth,
+        effort: input.effort,
+        resolved_effort: input.effort === "auto" ? null : input.effort,
+        max_resolved_effort: this.apiKey.max_effort,
         platforms: input.platforms,
         status: "queued",
-        spent_credits: credits,
+        effective_cap_microcredits: cap,
+        reserved_microcredits: cap,
+        spent_microcredits: 0n,
         error_code: null,
         error_message: null,
         result: null,
       };
 
-      this.nextRequestNumber += 1;
-      this.balance -= credits;
-      apiKey.month_to_date_credits += credits;
-      this.ledger.push({
-        requestId: request.id,
-        credits: credits * -1,
-      });
+      this.requestNumber += 1;
+      this.balanceMicrocredits -= cap;
+      this.apiKey.month_to_date_microcredits += cap;
+      this.ledger.push({ requestId: request.id, creditMicrocredits: -cap });
       this.requests.set(request.id, request);
-
-      return {
-        request,
-        created: true,
-      };
+      return { request, created: true };
     } finally {
-      releaseAccept();
+      unlock();
     }
-  }
-
-  async markRequestRunning(requestId: string): Promise<StoredContextRequest> {
-    return this.updateStatus(requestId, "running");
-  }
-
-  async completeContextRequest(
-    requestId: string,
-    result: StoredContextResultPayload,
-  ): Promise<StoredContextRequest> {
-    const request = this.updateStatus(requestId, "completed") as InternalRequest;
-
-    request.result = result;
-
-    return request;
   }
 
   async attachQstashMessageId(_requestId: string, _messageId: string): Promise<void> {}
@@ -309,554 +259,376 @@ class InMemoryContextStore implements ContextStore {
     requestId: string,
     errorCode: string,
     errorMessage: string,
-    options: FailContextRequestOptions = {},
   ): Promise<void> {
-    const request = this.updateStatus(requestId, "failed") as InternalRequest;
-
-    if (options.refundCredits && request.spent_credits > 0) {
-      const credits = request.spent_credits;
-
-      request.spent_credits = 0;
-      this.balance += credits;
-      this.apiKey.month_to_date_credits -= credits;
-      this.ledger.push({
-        requestId,
-        credits,
-      });
-    }
-
+    const request = this.requireRequest(requestId);
+    const release = request.reserved_microcredits;
+    request.status = "failed";
+    request.reserved_microcredits = 0n;
     request.error_code = errorCode;
     request.error_message = errorMessage;
+    this.release(request, release);
+  }
+
+  complete(requestId: string, actualMicrocredits: bigint): StoredContextResultPayload {
+    const request = this.requireRequest(requestId);
+    if (actualMicrocredits > request.effective_cap_microcredits) {
+      throw new Error("Test completion exceeded its reservation.");
+    }
+
+    const release = request.effective_cap_microcredits - actualMicrocredits;
+    request.status = "completed";
+    request.resolved_effort = request.effort === "auto" ? "low" : request.effort;
+    request.reserved_microcredits = 0n;
+    request.spent_microcredits = actualMicrocredits;
+    const source = {
+      id: "src_1",
+      platform: request.platforms[0] ?? "web",
+      title: "Public source",
+      url: "https://example.com/source",
+      published_at: "2026-07-01T00:00:00.000Z",
+      summary: "Normalized public evidence.",
+    };
+    const result: StoredContextResultPayload = {
+      answer: "Structured, cited context.",
+      context_pack: [
+        {
+          claim: "A supported claim.",
+          confidence: "high",
+          supporting_sources: [source.id],
+        },
+      ],
+      sources: [source],
+      gaps: [],
+      usage: {
+        credits_charged: creditMicrocreditsToDisplayNumber(actualMicrocredits),
+        credits_reserved: 0,
+        effort: request.effort,
+        resolved_effort: request.resolved_effort,
+        platforms_used: request.platforms,
+        sources_considered: 1,
+        sources_used: 1,
+        cached: false,
+      },
+    };
+    request.result = result;
+    this.release(request, release);
+    return result;
   }
 
   async close(): Promise<void> {}
 
-  private updateStatus(requestId: string, status: RequestStatus): StoredContextRequest {
+  private requireRequest(requestId: string): InternalRequest {
     const request = this.requests.get(requestId);
-
     if (!request) {
       throw new ApiError(404, "job_not_found", "Context request not found.");
     }
-
-    request.status = status;
-
     return request;
   }
-}
 
-function createCompletedResult(request: StoredContextRequest): StoredContextResultPayload {
-  const sources = request.platforms.map((platform, index) => ({
-    id: `src_${index + 1}`,
-    title: `${platform} source`,
-    url: `https://example.com/supacontext/${platform}`,
-    platform,
-  }));
-
-  return {
-    answer: `Worker-backed context for "${request.query}".`,
-    context_pack: [
-      {
-        claim: "The request was processed by the worker runner.",
-        confidence: "high",
-        supporting_sources: sources.map((source) => source.id),
-      },
-    ],
-    sources,
-    gaps: [],
-    usage: {
-      credits_charged: request.spent_credits,
-      depth: request.depth,
-      platforms_used: request.platforms,
-      sources_considered: sources.length,
-      sources_used: sources.length,
-      cached: false,
-    },
-  };
+  private release(request: InternalRequest, amount: bigint): void {
+    if (amount === 0n) {
+      return;
+    }
+    this.balanceMicrocredits += amount;
+    this.apiKey.month_to_date_microcredits -= amount;
+    this.ledger.push({ requestId: request.id, creditMicrocredits: amount });
+  }
 }
 
 class CompletingWorkerRunner implements ContextJobRunner {
-  constructor(private readonly store: InMemoryContextStore) {}
+  constructor(
+    private readonly store: InMemoryContextStore,
+    private readonly actualMicrocredits = 4_250_000n,
+  ) {}
 
   async runContextJob(requestId: string): Promise<ContextJobRunResult> {
-    const request = await this.store.findRequestById(workspaceId, requestId);
-
-    if (!request) {
-      return {
-        id: requestId,
-        status: "failed",
-        error: {
-          code: "job_not_found",
-          message: "Context job not found.",
-        },
-      };
-    }
-
-    if (request.status !== "queued") {
-      return {
-        id: requestId,
-        status: "skipped",
-        reason: `Context request is already ${request.status}.`,
-      };
-    }
-
-    const runningRequest = await this.store.markRequestRunning(requestId);
-    const result = createCompletedResult(runningRequest);
-    await this.store.completeContextRequest(requestId, result);
-
+    const result = this.store.complete(requestId, this.actualMicrocredits);
     return {
       id: requestId,
       status: "completed",
-      result,
+      result: {
+        resolved_effort: result.usage.resolved_effort,
+        answer: result.answer,
+        context_pack: result.context_pack,
+        sources: result.sources,
+        gaps: result.gaps,
+        usage: result.usage,
+      },
     };
-  }
-}
-
-class SkippingWorkerRunner implements ContextJobRunner {
-  async runContextJob(requestId: string): Promise<ContextJobRunResult> {
-    return {
-      id: requestId,
-      status: "skipped",
-      reason: "Context request is already running.",
-    };
-  }
-}
-
-class ThrowingWorkerRunner implements ContextJobRunner {
-  async runContextJob(_requestId: string): Promise<ContextJobRunResult> {
-    throw new ApiError(
-      500,
-      "internal_error",
-      "Context worker did not respond before the request timeout.",
-    );
   }
 }
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    authorization: `Bearer ${rawKey}`,
-    ...extra,
-  };
+  return { authorization: `Bearer ${rawKey}`, ...extra };
 }
 
-describe("context API routes", () => {
-  it("rejects invalid requests with a stable error code", async () => {
-    const server = buildServer(createEnv(), {
-      store: new InMemoryContextStore(),
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-    });
+function serverFor(
+  store: InMemoryContextStore,
+  input: { qstash?: QstashClient; workerRunner?: ContextJobRunner } = {},
+) {
+  return buildServer(createEnv(), {
+    store,
+    rateLimiter: new AllowRateLimiter(),
+    qstash: input.qstash ?? new CapturingQstashClient(),
+    workerRunner: input.workerRunner ?? new CompletingWorkerRunner(store),
+  });
+}
 
-    const response = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        depth: "standard",
-      },
-    });
+describe("context API effort and reservation routes", () => {
+  it("validates effort, max_credits, and rejects the removed depth field", async () => {
+    const server = serverFor(new InMemoryContextStore());
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "invalid_request",
-      },
-    });
+    for (const payload of [
+      { query: "research", effort: "extreme" },
+      { query: "research", effort: "low", max_credits: 250.000001 },
+      { query: "research", effort: "low", depth: "fast" },
+    ]) {
+      const response = await server.inject({
+        method: "POST",
+        url: "/v1/context",
+        headers: authHeaders(),
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: { code: "invalid_request" } });
+    }
 
     await server.close();
   });
 
-  it("requires a valid API key", async () => {
-    const store = new InMemoryContextStore();
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-    });
-
-    const missing = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      payload: {
-        query: "latest API context tools",
-      },
-    });
-    const invalid = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: {
-        authorization: "Bearer sk_sc_wrong",
-      },
-      payload: {
-        query: "latest API context tools",
-      },
-    });
-
-    expect(missing.statusCode).toBe(401);
-    expect(missing.json()).toMatchObject({ error: { code: "unauthorized" } });
-    expect(invalid.statusCode).toBe(401);
-    expect(invalid.json()).toMatchObject({ error: { code: "unauthorized" } });
-    expect(store.apiKey.last_used_at).toBeNull();
-
-    await server.close();
-  });
-
-  it("enforces plan and API key depth restrictions", async () => {
-    const freeServer = buildServer(createEnv(), {
-      store: new InMemoryContextStore("free", 500, "deep"),
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-    });
-    const keyLimitServer = buildServer(createEnv(), {
-      store: new InMemoryContextStore("pro", 500, "standard"),
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-    });
-
-    const freeResponse = await freeServer.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        query: "AI search APIs",
-        depth: "deep",
-      },
-    });
-    const keyLimitResponse = await keyLimitServer.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        query: "AI search APIs",
-        depth: "thorough",
-      },
-    });
-
-    expect(freeResponse.statusCode).toBe(403);
-    expect(freeResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
-    expect(keyLimitResponse.statusCode).toBe(403);
-    expect(keyLimitResponse.json()).toMatchObject({ error: { code: "forbidden_depth" } });
-
-    await freeServer.close();
-    await keyLimitServer.close();
-  });
-
-  it("deducts credits once and returns a completed synchronous worker result", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-      workerRunner: new CompletingWorkerRunner(store),
-    });
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        query: "Supacontext competitors",
-        platforms: ["web", "reddit"],
-      },
-    });
-    const body = response.json();
+  it("serializes fixed-point effort metadata without exposing bigint values", async () => {
+    const server = serverFor(new InMemoryContextStore());
+    const response = await server.inject({ method: "GET", url: "/v1/meta" });
 
     expect(response.statusCode).toBe(200);
-    expect(body).toMatchObject({
-      status: "completed",
-      query: "Supacontext competitors",
-      depth: "standard",
-      usage: {
-        credits_charged: 20,
-        platforms_used: ["web", "reddit"],
-        cached: false,
+    expect(response.json()).toMatchObject({
+      pricing_version: "2026-07-10",
+      efforts: {
+        low: { minimum_credits: "3", maximum_credits: "20" },
+        auto: { minimum_credits: "8", maximum_credits: "250" },
       },
     });
-    expect(store.currentBalance).toBe(80);
-    expect(store.ledger).toEqual([{ requestId: body.id, credits: -20 }]);
-    expect(store.apiKey.month_to_date_credits).toBe(20);
-    expect(store.apiKey.last_used_at).toBeInstanceOf(Date);
 
     await server.close();
   });
 
-  it("does not expose internal failure messages in public responses", () => {
-    const response = toPublicContextResponse({
-      id: "ctx_failed",
-      query: "Supacontext",
-      depth: "standard",
-      platforms: ["web"],
-      status: "failed",
-      spent_credits: 0,
-      error_code: "internal_error",
-      error_message: "connect ETIMEDOUT qstash.internal",
-      result: null,
-    });
-
-    expect(response.gaps).toEqual(["The context request could not be queued. Please retry."]);
-  });
-
-  it("does not double-charge idempotent retries", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-      workerRunner: new CompletingWorkerRunner(store),
-    });
-    const request = {
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders({
-        "idempotency-key": "idem_1",
-      }),
-      payload: {
-        query: "Supacontext pricing",
-        depth: "fast",
-      },
-    } as const;
-
-    const first = await server.inject(request);
-    const second = await server.inject(request);
-
-    expect(first.statusCode).toBe(200);
-    expect(second.statusCode).toBe(200);
-    expect(second.json().id).toBe(first.json().id);
-    expect(store.currentBalance).toBe(95);
-    expect(store.ledger).toHaveLength(1);
-
-    await server.close();
-  });
-
-  it("rejects idempotency-key reuse with a different request body", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-      workerRunner: new CompletingWorkerRunner(store),
-    });
-    const headers = authHeaders({
-      "idempotency-key": "idem_conflict",
-    });
-
-    const first = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers,
-      payload: {
-        query: "Supacontext pricing",
-        depth: "fast",
-      },
-    });
-    const second = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers,
-      payload: {
-        query: "Different query",
-        depth: "fast",
-      },
-    });
-
-    expect(first.statusCode).toBe(200);
-    expect(second.statusCode).toBe(409);
-    expect(second.json()).toMatchObject({ error: { code: "idempotency_key_conflict" } });
-    expect(store.currentBalance).toBe(95);
-    expect(store.ledger).toHaveLength(1);
-
-    await server.close();
-  });
-
-  it("refunds credits when asynchronous enqueue fails", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new FailingQstashClient(),
-    });
-
+  it("reserves the lower caller cap and reports it on an async request", async () => {
+    const store = new InMemoryContextStore({ balanceCredits: 100 });
+    const qstash = new CapturingQstashClient();
+    const server = serverFor(store, { qstash });
     const response = await server.inject({
       method: "POST",
       url: "/v1/context",
       headers: authHeaders(),
-      payload: {
-        query: "new context APIs",
-        async: true,
+      payload: { query: "narrow lookup", effort: "low", max_credits: 4.5, async: true },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({ status: "queued", credits_reserved: 4.5 });
+    expect(store.balance).toBe(95.5);
+    expect(qstash.jobs[0]).toMatchObject({ effort: "low", maxCredits: 4.5 });
+
+    await server.close();
+  });
+
+  it("defines budget denial for low caller caps, key restrictions, and balances", async () => {
+    const cases = [
+      {
+        store: new InMemoryContextStore(),
+        payload: { query: "research", effort: "medium", max_credits: 5 },
+        status: 402,
+        code: "budget_too_low",
       },
+      {
+        store: new InMemoryContextStore({ maxEffort: "medium" }),
+        payload: { query: "research", effort: "high" },
+        status: 403,
+        code: "forbidden_effort",
+      },
+      {
+        store: new InMemoryContextStore({ balanceCredits: 2 }),
+        payload: { query: "research", effort: "low" },
+        status: 402,
+        code: "insufficient_credits",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const server = serverFor(testCase.store);
+      const response = await server.inject({
+        method: "POST",
+        url: "/v1/context",
+        headers: authHeaders(),
+        payload: testCase.payload,
+      });
+      expect(response.statusCode).toBe(testCase.status);
+      expect(response.json()).toMatchObject({ error: { code: testCase.code } });
+      await server.close();
+    }
+  });
+
+  it("settles synchronous requests against actual usage and releases the remainder", async () => {
+    const store = new InMemoryContextStore({ balanceCredits: 100 });
+    const server = serverFor(store, { workerRunner: new CompletingWorkerRunner(store) });
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers: authHeaders(),
+      payload: { query: "verified answer", effort: "medium", max_credits: 10 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      effort: "medium",
+      resolved_effort: "medium",
+      status: "completed",
+      answer: "Structured, cited context.",
+      usage: { credits_charged: 4.25, credits_reserved: 0 },
+    });
+    expect(store.balance).toBe(95.75);
+    expect(store.ledger.map((entry) => entry.creditMicrocredits)).toEqual([
+      -10n * CREDIT_MICROS,
+      5_750_000n,
+    ]);
+
+    await server.close();
+  });
+
+  it("does not reserve twice for concurrent idempotent retries", async () => {
+    const store = new InMemoryContextStore({ balanceCredits: 100 });
+    const qstash = new CapturingQstashClient();
+    const server = serverFor(store, { qstash });
+    const request = {
+      method: "POST" as const,
+      url: "/v1/context",
+      headers: authHeaders({ "idempotency-key": "same-request" }),
+      payload: { query: "idempotent", effort: "low", max_credits: 8, async: true },
+    };
+    const [first, second] = await Promise.all([server.inject(request), server.inject(request)]);
+
+    expect(first.statusCode).toBe(202);
+    expect(second.statusCode).toBe(202);
+    expect(first.json().id).toBe(second.json().id);
+    expect(store.balance).toBe(92);
+    expect(store.ledger).toHaveLength(1);
+    expect(qstash.jobs).toHaveLength(1);
+
+    await server.close();
+  });
+
+  it("rejects idempotency-key reuse with a different priced payload", async () => {
+    const store = new InMemoryContextStore();
+    const server = serverFor(store);
+    const headers = authHeaders({ "idempotency-key": "conflict" });
+
+    await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers,
+      payload: { query: "first", effort: "low", async: true },
+    });
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers,
+      payload: { query: "second", effort: "medium", async: true },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: "idempotency_key_conflict" } });
+
+    await server.close();
+  });
+
+  it("releases an untouched reservation when enqueueing fails", async () => {
+    const store = new InMemoryContextStore({ balanceCredits: 100 });
+    const server = serverFor(store, { qstash: new FailingQstashClient() });
+    const response = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers: authHeaders(),
+      payload: { query: "enqueue failure", effort: "low", async: true },
     });
 
     expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ error: { code: "internal_error" } });
-    expect(store.currentBalance).toBe(100);
-    expect(store.ledger).toEqual([
-      { requestId: "ctx_test_1", credits: -20 },
-      { requestId: "ctx_test_1", credits: 20 },
+    expect(store.balance).toBe(100);
+    expect(store.ledger.map((entry) => entry.creditMicrocredits)).toEqual([
+      -20n * CREDIT_MICROS,
+      20n * CREDIT_MICROS,
     ]);
-    expect(store.apiKey.month_to_date_credits).toBe(0);
 
     await server.close();
   });
 
-  it("refunds credits when the synchronous worker call throws", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-      workerRunner: new ThrowingWorkerRunner(),
+  it("serializes concurrent reservations so the balance never becomes negative", async () => {
+    const store = new InMemoryContextStore({ balanceCredits: 10, plan: "pro" });
+    const server = serverFor(store);
+    const request = (key: string) => ({
+      method: "POST" as const,
+      url: "/v1/context",
+      headers: authHeaders({ "idempotency-key": key }),
+      payload: { query: key, effort: "low", max_credits: 8, async: true },
     });
+    const responses = await Promise.all([
+      server.inject(request("reservation-a")),
+      server.inject(request("reservation-b")),
+    ]);
 
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([202, 402]);
+    expect(store.balance).toBe(2);
+
+    await server.close();
+  });
+
+  it("returns queued ownership-scoped status with reservation details", async () => {
+    const store = new InMemoryContextStore();
+    const server = serverFor(store);
+    const created = await server.inject({
+      method: "POST",
+      url: "/v1/context",
+      headers: authHeaders(),
+      payload: { query: "status", effort: "auto", max_credits: 12, async: true },
+    });
     const response = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        query: "new context APIs",
-      },
-    });
-
-    expect(response.statusCode).toBe(500);
-    expect(response.json()).toMatchObject({ error: { code: "internal_error" } });
-    expect(store.currentBalance).toBe(100);
-    expect(store.ledger).toEqual([
-      { requestId: "ctx_test_1", credits: -20 },
-      { requestId: "ctx_test_1", credits: 20 },
-    ]);
-    expect(store.apiKey.month_to_date_credits).toBe(0);
-
-    const request = await store.findRequestById(workspaceId, "ctx_test_1");
-
-    expect(request).toMatchObject({
-      status: "failed",
-      spent_credits: 0,
-      error_code: "internal_error",
-    });
-
-    await server.close();
-  });
-
-  it("refunds credits when the synchronous worker skips processing", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-      workerRunner: new SkippingWorkerRunner(),
-    });
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        query: "new context APIs",
-      },
-    });
-
-    expect(response.statusCode).toBe(500);
-    expect(response.json()).toMatchObject({ error: { code: "internal_error" } });
-    expect(store.currentBalance).toBe(100);
-    expect(store.ledger).toEqual([
-      { requestId: "ctx_test_1", credits: -20 },
-      { requestId: "ctx_test_1", credits: 20 },
-    ]);
-    expect(store.apiKey.month_to_date_credits).toBe(0);
-
-    const request = await store.findRequestById(workspaceId, "ctx_test_1");
-
-    expect(request).toMatchObject({
-      status: "failed",
-      spent_credits: 0,
-      error_code: "internal_error",
-    });
-
-    await server.close();
-  });
-
-  it("queues asynchronous requests and exposes status through GET", async () => {
-    const store = new InMemoryContextStore("pro", 100);
-    const qstash = new CapturingQstashClient();
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash,
-    });
-
-    const postResponse = await server.inject({
-      method: "POST",
-      url: "/v1/context",
-      headers: authHeaders(),
-      payload: {
-        query: "new context APIs",
-        async: true,
-      },
-    });
-    const postBody = postResponse.json();
-    const getResponse = await server.inject({
       method: "GET",
-      url: `/v1/context/${postBody.id}`,
+      url: `/v1/context/${created.json().id as string}`,
       headers: authHeaders(),
     });
 
-    expect(postResponse.statusCode).toBe(202);
-    expect(postBody).toEqual({
-      id: postBody.id,
-      status: "queued",
-      credits_charged: 20,
-    });
-    expect(qstash.jobs).toHaveLength(1);
-    expect(qstash.jobs[0]).toMatchObject({
-      requestId: postBody.id,
-      query: "new context APIs",
-      depth: "standard",
-    });
-    expect(getResponse.statusCode).toBe(200);
-    expect(getResponse.json()).toMatchObject({
-      id: postBody.id,
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      effort: "auto",
       status: "queued",
       answer: null,
-      usage: {
-        credits_charged: 20,
-        sources_considered: 0,
-      },
+      usage: { credits_charged: 0, credits_reserved: 12 },
     });
 
     await server.close();
   });
+});
 
-  it("enforces async concurrency while accepting requests", async () => {
-    const store = new InMemoryContextStore("free", 100);
-    const server = buildServer(createEnv(), {
-      store,
-      rateLimiter: new AllowRateLimiter(),
-      qstash: new CapturingQstashClient(),
-    });
-    const requests = await Promise.all([
-      server.inject({
-        method: "POST",
-        url: "/v1/context",
-        headers: authHeaders(),
-        payload: {
-          query: "first async request",
-          async: true,
-        },
-      }),
-      server.inject({
-        method: "POST",
-        url: "/v1/context",
-        headers: authHeaders(),
-        payload: {
-          query: "second async request",
-          async: true,
-        },
-      }),
+describe("public response safety", () => {
+  it("does not expose stored internal failure messages", () => {
+    const request: StoredContextRequest = {
+      id: "ctx_failed",
+      query: "failure",
+      effort: "low",
+      resolved_effort: "low",
+      max_resolved_effort: "x_high",
+      platforms: ["web"],
+      status: "failed" as RequestStatus,
+      effective_cap_microcredits: 20n * CREDIT_MICROS,
+      reserved_microcredits: 0n,
+      spent_microcredits: 1_500_000n,
+      error_code: "provider_error",
+      error_message: "secret upstream detail",
+      result: null,
+    };
+
+    const safe = toPublicContextResponse(request);
+    expect(JSON.stringify(safe)).not.toContain("secret upstream detail");
+    expect(safe.gaps).toEqual([
+      "The context request failed. Retry with the same idempotency key to inspect its result.",
     ]);
-    const statusCodes = requests.map((response) => response.statusCode).sort();
-
-    expect(statusCodes).toEqual([202, 429]);
-    expect(store.currentBalance).toBe(80);
-    expect(store.ledger).toHaveLength(1);
-
-    await server.close();
   });
 });

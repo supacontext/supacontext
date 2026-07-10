@@ -3,6 +3,7 @@ import {
   formatCredits,
   formatDateTime,
   formatDurationMs,
+  formatEffort,
   formatLatency,
   formatMoney,
   formatPlatforms,
@@ -12,7 +13,13 @@ describe("usage formatting", () => {
   it("formats credits and money", () => {
     expect(formatCredits(1)).toBe("1 credit");
     expect(formatCredits(1500)).toBe("1,500 credits");
+    expect(formatCredits(8.123456)).toBe("8.123456 credits");
     expect(formatMoney(1900)).toBe("$19");
+  });
+
+  it("formats effort labels", () => {
+    expect(formatEffort("medium")).toBe("Medium");
+    expect(formatEffort("x_high")).toBe("X High");
   });
 
   it("formats dates and latency in a stable timezone", () => {

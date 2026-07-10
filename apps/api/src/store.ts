@@ -1,12 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  CONTEXT_DEPTHS,
   PLAN_RATE_LIMITS,
   PLAN_SLUGS,
-  type ContextDepth,
+  PRICING_VERSION,
+  RESOLVED_EFFORTS,
+  type ContextEffort,
   type Platform,
   type PlatformMode,
   type PlanSlug,
+  type ResolvedEffort,
 } from "@supacontext/core";
 import {
   findActiveApiKeyByHash,
@@ -14,18 +16,22 @@ import {
   type ApiKeyRow,
   type DatabaseClient,
 } from "@supacontext/db";
-import { authorizeUsage } from "@supacontext/usage";
+import { authorizeUsage, type UsageDenialReason } from "@supacontext/usage";
 import type postgres from "postgres";
 import { ApiError } from "./errors.js";
-import type { StoredContextRequest, StoredContextResultPayload } from "./public-response.js";
+import type { StoredContextRequest } from "./public-response.js";
 
 type ContextRequestSelectRow = {
   id: string;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  resolved_effort: ResolvedEffort | null;
+  max_resolved_effort: ResolvedEffort;
   platforms: Platform[];
   status: StoredContextRequest["status"];
-  spent_credits: number;
+  effective_cap_microcredits: string;
+  reserved_microcredits: string;
+  spent_microcredits: string;
   error_code: string | null;
   error_message: string | null;
   response_json: unknown | null;
@@ -34,16 +40,13 @@ type ContextRequestSelectRow = {
 
 export type ContextRequestIdempotencyShape = {
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  callerMaxCreditMicros: bigint | null;
   platforms: Platform[];
   platformMode: PlatformMode;
   async: boolean;
   webhookUrl: string | null;
   metadata: Record<string, unknown>;
-};
-
-export type FailContextRequestOptions = {
-  refundCredits?: boolean;
 };
 
 export type AcceptContextRequestInput = ContextRequestIdempotencyShape & {
@@ -67,20 +70,9 @@ export interface ContextStore {
     idempotencyKey: string,
     idempotencyRequestHash: string,
   ): Promise<StoredContextRequest | null>;
-  countActiveJobs(workspaceId: string, depth?: ContextDepth): Promise<number>;
   acceptContextRequest(input: AcceptContextRequestInput): Promise<AcceptContextRequestResult>;
-  markRequestRunning(requestId: string): Promise<StoredContextRequest>;
-  completeContextRequest(
-    requestId: string,
-    result: StoredContextResultPayload,
-  ): Promise<StoredContextRequest>;
   attachQstashMessageId(requestId: string, messageId: string): Promise<void>;
-  failContextRequest(
-    requestId: string,
-    errorCode: string,
-    errorMessage: string,
-    options?: FailContextRequestOptions,
-  ): Promise<void>;
+  failContextRequest(requestId: string, errorCode: string, errorMessage: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -89,6 +81,10 @@ function createContextRequestId(): string {
 }
 
 function stableStringify(value: unknown): string {
+  if (typeof value === "bigint") {
+    return JSON.stringify(value.toString());
+  }
+
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   }
@@ -108,7 +104,8 @@ export function createContextRequestIdempotencyHash(input: ContextRequestIdempot
     .update(
       stableStringify({
         query: input.query,
-        depth: input.depth,
+        effort: input.effort,
+        caller_max_microcredits: input.callerMaxCreditMicros,
         platforms: input.platforms,
         platform_mode: input.platformMode,
         async: input.async,
@@ -129,48 +126,57 @@ function assertIdempotencyRequestHash(row: ContextRequestSelectRow, expectedHash
   }
 }
 
-function mapResultPayload(value: unknown): StoredContextResultPayload | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  return value as StoredContextResultPayload;
-}
-
 function mapRequestRow(row: ContextRequestSelectRow): StoredContextRequest {
   return {
     id: row.id,
     query: row.query,
-    depth: row.depth,
+    effort: row.effort,
+    resolved_effort: row.resolved_effort,
+    max_resolved_effort: row.max_resolved_effort,
     platforms: row.platforms,
     status: row.status,
-    spent_credits: row.spent_credits,
+    effective_cap_microcredits: BigInt(row.effective_cap_microcredits),
+    reserved_microcredits: BigInt(row.reserved_microcredits),
+    spent_microcredits: BigInt(row.spent_microcredits),
     error_code: row.error_code,
     error_message: row.error_message,
-    result: mapResultPayload(row.response_json),
+    result:
+      row.response_json && typeof row.response_json === "object"
+        ? (row.response_json as StoredContextRequest["result"])
+        : null,
   };
 }
 
-function mapUsageDenial(
-  reason: Exclude<ReturnType<typeof authorizeUsage>, { allowed: true }>["reason"],
-): ApiError {
+function mapUsageDenial(reason: UsageDenialReason): ApiError {
+  if (reason === "api_key_effort_restricted") {
+    return new ApiError(
+      403,
+      "forbidden_effort",
+      "Requested effort exceeds this API key's maximum effort.",
+    );
+  }
+
+  if (reason === "caller_cap") {
+    return new ApiError(
+      402,
+      "budget_too_low",
+      "max_credits is below the minimum budget for the requested effort.",
+    );
+  }
+
   if (reason === "monthly_limit") {
     return new ApiError(
       402,
       "insufficient_credits",
-      "API key monthly credit limit would be exceeded.",
+      "The API key's remaining monthly credit limit cannot fund this effort.",
       { reason: "monthly_limit" },
     );
   }
 
-  if (reason === "credits") {
-    return new ApiError(402, "insufficient_credits", "Insufficient account credits.");
-  }
-
   return new ApiError(
-    403,
-    "forbidden_depth",
-    "Requested depth is not allowed for this API key or plan.",
+    402,
+    "insufficient_credits",
+    "The available balance cannot fund the minimum budget for this effort.",
   );
 }
 
@@ -178,12 +184,12 @@ function assertPlanSlug(value: string): PlanSlug {
   return PLAN_SLUGS.includes(value as PlanSlug) ? (value as PlanSlug) : "free";
 }
 
-function assertDepth(value: ContextDepth): ContextDepth {
-  if (CONTEXT_DEPTHS.includes(value)) {
-    return value;
+function assertResolvedEffort(value: string): ResolvedEffort {
+  if (RESOLVED_EFFORTS.includes(value as ResolvedEffort)) {
+    return value as ResolvedEffort;
   }
 
-  return "standard";
+  throw new Error(`Unknown resolved effort: ${value}`);
 }
 
 export class PostgresContextStore implements ContextStore {
@@ -240,23 +246,11 @@ export class PostgresContextStore implements ContextStore {
     );
   }
 
-  async countActiveJobs(workspaceId: string, depth?: ContextDepth): Promise<number> {
-    const depthFilter = depth ? this.sql`and depth = ${depth}` : this.sql``;
-    const rows = await this.sql<Array<{ count: number }>>`
-      select count(*)::int as count
-      from context_requests
-      where workspace_id = ${workspaceId}
-        and status in ('queued', 'running')
-        ${depthFilter}
-    `;
-
-    return rows[0]?.count ?? 0;
-  }
-
   async acceptContextRequest(
     input: AcceptContextRequestInput,
   ): Promise<AcceptContextRequestResult> {
     return this.sql.begin(async (transaction) => {
+      await this.lockWorkspace(transaction, input.apiKey.workspace_id);
       const idempotencyRequestHash = createContextRequestIdempotencyHash(input);
 
       if (input.idempotencyKey) {
@@ -268,25 +262,20 @@ export class PostgresContextStore implements ContextStore {
         );
 
         if (existing) {
-          return {
-            request: existing,
-            created: false,
-          };
+          return { request: existing, created: false };
         }
       }
 
-      await this.lockWorkspace(transaction, input.apiKey.workspace_id);
       await this.enforceConcurrencyInTransaction(transaction, input);
-
       const apiKey = await this.getApiKeyForUpdate(transaction, input.apiKey.id);
       const balance = await this.getBalanceForUpdate(transaction, input.apiKey.workspace_id);
       const authorization = authorizeUsage({
-        plan: input.plan,
-        depth: input.depth,
-        balance,
-        apiKeyMaxDepth: assertDepth(apiKey.max_depth),
-        monthlyCreditLimit: apiKey.monthly_credit_limit,
-        monthToDateCredits: apiKey.month_to_date_credits,
+        effort: input.effort,
+        balanceCreditMicros: balance,
+        callerMaxCreditMicros: input.callerMaxCreditMicros,
+        apiKeyMaxEffort: apiKey.max_effort,
+        monthlyCreditLimitMicros: apiKey.monthly_credit_limit_microcredits,
+        monthToDateCreditMicros: apiKey.month_to_date_microcredits,
       });
 
       if (!authorization.allowed) {
@@ -296,7 +285,8 @@ export class PostgresContextStore implements ContextStore {
       const request = await this.insertContextRequest(
         transaction,
         input,
-        authorization.requiredCredits,
+        apiKey.max_effort,
+        authorization.reservationCreditMicros,
       );
 
       if (!request) {
@@ -315,128 +305,40 @@ export class PostgresContextStore implements ContextStore {
           throw new Error("Failed to resolve idempotent context request.");
         }
 
-        return {
-          request: existing,
-          created: false,
-        };
+        return { request: existing, created: false };
       }
 
       await transaction`
         insert into usage_ledger (
           workspace_id,
           event_type,
-          credits,
+          credit_microcredits,
           context_request_id,
           idempotency_key,
           metadata
         )
         values (
           ${input.apiKey.workspace_id},
-          'debit'::ledger_event_type,
-          ${authorization.requiredCredits * -1},
+          'reservation'::ledger_event_type,
+          ${(authorization.reservationCreditMicros * -1n).toString()},
           ${request.id},
-          ${`request:${request.id}`},
+          ${`reservation:${request.id}`},
           ${transaction.json({
             api_key_id: input.apiKey.id,
-            depth: input.depth,
+            effort: input.effort,
+            pricing_version: PRICING_VERSION,
           })}
         )
       `;
 
       await transaction`
         update api_keys
-        set month_to_date_credits = month_to_date_credits + ${authorization.requiredCredits}
+        set month_to_date_microcredits =
+          month_to_date_microcredits + ${authorization.reservationCreditMicros.toString()}
         where id = ${input.apiKey.id}
       `;
 
-      return {
-        request,
-        created: true,
-      };
-    });
-  }
-
-  async markRequestRunning(requestId: string): Promise<StoredContextRequest> {
-    const rows = await this.sql<ContextRequestSelectRow[]>`
-      update context_requests
-      set
-        status = 'running',
-        started_at = coalesce(started_at, now())
-      where id = ${requestId}
-      returning
-        id,
-        query,
-        depth,
-        platforms,
-        status,
-        spent_credits,
-        error_code,
-        error_message,
-        null::jsonb as response_json
-    `;
-
-    const row = rows[0];
-
-    if (!row) {
-      throw new ApiError(404, "job_not_found", "Context request not found.");
-    }
-
-    return mapRequestRow(row);
-  }
-
-  async completeContextRequest(
-    requestId: string,
-    result: StoredContextResultPayload,
-  ): Promise<StoredContextRequest> {
-    return this.sql.begin(async (transaction) => {
-      const rows = await transaction<ContextRequestSelectRow[]>`
-        with target_request as (
-          select id
-          from context_requests
-          where id = ${requestId}
-        ),
-        saved_result as (
-          insert into context_results (
-            context_request_id,
-            response_json,
-            citation_count
-          )
-          select
-            target_request.id,
-            ${transaction.json(result as postgres.JSONValue)},
-            ${result.sources.length}
-          from target_request
-          on conflict (context_request_id) do update
-          set
-            response_json = excluded.response_json,
-            citation_count = excluded.citation_count
-          returning response_json
-        )
-        update context_requests
-        set
-          status = 'completed',
-          completed_at = now()
-        from saved_result
-        where context_requests.id = ${requestId}
-        returning
-          context_requests.id,
-          context_requests.query,
-          context_requests.depth,
-          context_requests.platforms,
-          context_requests.status,
-          context_requests.spent_credits,
-          context_requests.error_code,
-          context_requests.error_message,
-          saved_result.response_json
-      `;
-
-      const row = rows[0];
-
-      if (!row) {
-        throw new ApiError(404, "job_not_found", "Context request not found.");
-      }
-
-      return mapRequestRow(row);
+      return { request, created: true };
     });
   }
 
@@ -452,71 +354,107 @@ export class PostgresContextStore implements ContextStore {
     requestId: string,
     errorCode: string,
     errorMessage: string,
-    options: FailContextRequestOptions = {},
   ): Promise<void> {
     await this.sql.begin(async (transaction) => {
       const rows = await transaction<
         Array<{
           workspace_id: string;
           api_key_id: string | null;
-          spent_credits: number;
+          effective_cap_microcredits: string;
+          settled_at: Date | null;
+          status: StoredContextRequest["status"];
         }>
       >`
-        select workspace_id, api_key_id, spent_credits
+        select
+          workspace_id,
+          api_key_id,
+          effective_cap_microcredits::text,
+          settled_at,
+          status
         from context_requests
         where id = ${requestId}
         for update
       `;
       const request = rows[0];
 
-      if (!request) {
+      if (!request || request.settled_at || request.status === "completed") {
         return;
       }
+
+      await transaction`
+        update context_cost_events
+        set
+          status = 'uncertain',
+          actual_microcredits = reserved_microcredits,
+          settled_at = coalesce(settled_at, now())
+        where context_request_id = ${requestId}
+          and status = 'pending'
+      `;
+
+      const costRows = await transaction<Array<{ actual_microcredits: string }>>`
+        select coalesce(sum(
+          case
+            when status in ('pending', 'uncertain') then reserved_microcredits
+            when status = 'settled' then coalesce(actual_microcredits, reserved_microcredits)
+            else 0
+          end
+        ), 0)::text as actual_microcredits
+        from context_cost_events
+        where context_request_id = ${requestId}
+      `;
+      const cap = BigInt(request.effective_cap_microcredits);
+      const measured = BigInt(costRows[0]?.actual_microcredits ?? "0");
+      const actual = measured > cap ? cap : measured;
+      const release = cap - actual;
 
       await transaction`
         update context_requests
         set
           status = 'failed',
-          spent_credits = ${options.refundCredits ? 0 : request.spent_credits},
+          reserved_microcredits = 0,
+          spent_microcredits = ${actual.toString()},
           error_code = ${errorCode},
           error_message = ${errorMessage},
-          completed_at = now()
+          completed_at = now(),
+          settled_at = now(),
+          lease_expires_at = null
         where id = ${requestId}
       `;
 
-      if (!options.refundCredits || request.spent_credits <= 0) {
-        return;
-      }
-
-      const refundRows = await transaction<Array<{ id: string }>>`
-        insert into usage_ledger (
-          workspace_id,
-          event_type,
-          credits,
-          context_request_id,
-          idempotency_key,
-          metadata
-        )
-        values (
-          ${request.workspace_id},
-          'refund'::ledger_event_type,
-          ${request.spent_credits},
-          ${requestId},
-          ${`refund:${requestId}`},
-          ${transaction.json({ reason: errorCode })}
-        )
-        on conflict (workspace_id, idempotency_key)
-        where idempotency_key is not null
-        do nothing
-        returning id
-      `;
-
-      if (refundRows[0] && request.api_key_id) {
-        await transaction`
-          update api_keys
-          set month_to_date_credits = greatest(0, month_to_date_credits - ${request.spent_credits})
-          where id = ${request.api_key_id}
+      if (release > 0n) {
+        const releaseRows = await transaction<Array<{ id: string }>>`
+          insert into usage_ledger (
+            workspace_id,
+            event_type,
+            credit_microcredits,
+            context_request_id,
+            idempotency_key,
+            metadata
+          )
+          values (
+            ${request.workspace_id},
+            'release'::ledger_event_type,
+            ${release.toString()},
+            ${requestId},
+            ${`release:${requestId}`},
+            ${transaction.json({ reason: errorCode, pricing_version: PRICING_VERSION })}
+          )
+          on conflict (workspace_id, idempotency_key)
+          where idempotency_key is not null
+          do nothing
+          returning id
         `;
+
+        if (releaseRows[0] && request.api_key_id) {
+          await transaction`
+            update api_keys
+            set month_to_date_microcredits = greatest(
+              0,
+              month_to_date_microcredits - ${release.toString()}
+            )
+            where id = ${request.api_key_id}
+          `;
+        }
       }
     });
   }
@@ -534,10 +472,14 @@ export class PostgresContextStore implements ContextStore {
       select
         context_requests.id,
         context_requests.query,
-        context_requests.depth,
+        context_requests.effort,
+        context_requests.resolved_effort,
+        context_requests.max_resolved_effort,
         context_requests.platforms,
         context_requests.status,
-        context_requests.spent_credits,
+        context_requests.effective_cap_microcredits::text,
+        context_requests.reserved_microcredits::text,
+        context_requests.spent_microcredits::text,
         context_requests.error_code,
         context_requests.error_message,
         context_requests.idempotency_request_hash,
@@ -548,7 +490,6 @@ export class PostgresContextStore implements ContextStore {
       ${whereClause}
       limit 1
     `;
-
     const row = rows[0];
 
     if (!row) {
@@ -582,16 +523,23 @@ export class PostgresContextStore implements ContextStore {
     transaction: postgres.TransactionSql,
     apiKeyId: string,
   ): Promise<ApiKeyRow> {
-    const rows = await transaction<ApiKeyRow[]>`
+    const rows = await transaction<
+      Array<
+        Omit<ApiKeyRow, "monthly_credit_limit_microcredits" | "month_to_date_microcredits"> & {
+          monthly_credit_limit_microcredits: string | null;
+          month_to_date_microcredits: string;
+        }
+      >
+    >`
       select
         id,
         workspace_id,
         name,
         key_hash,
         prefix,
-        max_depth,
-        monthly_credit_limit,
-        month_to_date_credits,
+        max_effort,
+        monthly_credit_limit_microcredits::text,
+        month_to_date_microcredits::text,
         last_used_at,
         revoked_at,
         created_at
@@ -600,14 +548,21 @@ export class PostgresContextStore implements ContextStore {
         and revoked_at is null
       for update
     `;
-
     const row = rows[0];
 
     if (!row) {
       throw new ApiError(401, "unauthorized", "Invalid API key.");
     }
 
-    return row;
+    return {
+      ...row,
+      max_effort: assertResolvedEffort(row.max_effort),
+      monthly_credit_limit_microcredits:
+        row.monthly_credit_limit_microcredits === null
+          ? null
+          : BigInt(row.monthly_credit_limit_microcredits),
+      month_to_date_microcredits: BigInt(row.month_to_date_microcredits),
+    };
   }
 
   private async lockWorkspace(
@@ -646,53 +601,65 @@ export class PostgresContextStore implements ContextStore {
   private async getBalanceForUpdate(
     transaction: postgres.TransactionSql,
     workspaceId: string,
-  ): Promise<number> {
-    const rows = await transaction<Array<{ balance: number }>>`
-      select balance
+  ): Promise<bigint> {
+    const rows = await transaction<Array<{ balance_microcredits: string }>>`
+      select balance_microcredits::text
       from credit_balances
       where workspace_id = ${workspaceId}
       for update
     `;
 
-    return rows[0]?.balance ?? 0;
+    return BigInt(rows[0]?.balance_microcredits ?? "0");
   }
 
   private async insertContextRequest(
     transaction: postgres.TransactionSql,
     input: AcceptContextRequestInput,
-    credits: number,
+    maxResolvedEffort: ResolvedEffort,
+    reservationCreditMicros: bigint,
   ): Promise<StoredContextRequest | null> {
     const requestId = createContextRequestId();
-    const rowFields = transaction`
-      id,
-      query,
-      depth,
-      platforms,
-      status,
-      spent_credits,
-      error_code,
-      error_message,
-      null::jsonb as response_json,
-      ${input.idempotencyKey ? createContextRequestIdempotencyHash(input) : null} as idempotency_request_hash
-    `;
-
+    const idempotencyRequestHash = input.idempotencyKey
+      ? createContextRequestIdempotencyHash(input)
+      : null;
+    const resolvedEffort = input.effort === "auto" ? null : input.effort;
     const values = transaction`
       ${requestId},
       ${input.apiKey.workspace_id},
       ${input.apiKey.id},
       ${input.query},
-      ${input.depth}::context_depth,
+      ${input.effort}::context_effort,
+      ${resolvedEffort}::context_effort,
+      ${maxResolvedEffort}::context_effort,
       ${input.platforms}::platform[],
       ${input.platformMode},
       'queued'::request_status,
-      ${credits},
-      ${credits},
+      ${input.callerMaxCreditMicros?.toString() ?? null},
+      ${reservationCreditMicros.toString()},
+      ${reservationCreditMicros.toString()},
+      0,
+      ${PRICING_VERSION},
       ${input.idempotencyKey},
-      ${input.idempotencyKey ? createContextRequestIdempotencyHash(input) : null},
+      ${idempotencyRequestHash},
       ${input.webhookUrl},
       ${transaction.json(input.metadata as postgres.JSONValue)}
     `;
-
+    const returnedFields = transaction`
+      id,
+      query,
+      effort,
+      resolved_effort,
+      max_resolved_effort,
+      platforms,
+      status,
+      effective_cap_microcredits::text,
+      reserved_microcredits::text,
+      spent_microcredits::text,
+      error_code,
+      error_message,
+      null::jsonb as response_json,
+      idempotency_request_hash
+    `;
     const rows = input.idempotencyKey
       ? await transaction<ContextRequestSelectRow[]>`
           insert into context_requests (
@@ -700,12 +667,17 @@ export class PostgresContextStore implements ContextStore {
             workspace_id,
             api_key_id,
             query,
-            depth,
+            effort,
+            resolved_effort,
+            max_resolved_effort,
             platforms,
             platform_mode,
             status,
-            requested_credits,
-            spent_credits,
+            caller_max_microcredits,
+            effective_cap_microcredits,
+            reserved_microcredits,
+            spent_microcredits,
+            pricing_version,
             idempotency_key,
             idempotency_request_hash,
             webhook_url,
@@ -715,7 +687,7 @@ export class PostgresContextStore implements ContextStore {
           on conflict (workspace_id, idempotency_key)
           where idempotency_key is not null
           do nothing
-          returning ${rowFields}
+          returning ${returnedFields}
         `
       : await transaction<ContextRequestSelectRow[]>`
           insert into context_requests (
@@ -723,23 +695,26 @@ export class PostgresContextStore implements ContextStore {
             workspace_id,
             api_key_id,
             query,
-            depth,
+            effort,
+            resolved_effort,
+            max_resolved_effort,
             platforms,
             platform_mode,
             status,
-            requested_credits,
-            spent_credits,
+            caller_max_microcredits,
+            effective_cap_microcredits,
+            reserved_microcredits,
+            spent_microcredits,
+            pricing_version,
             idempotency_key,
             idempotency_request_hash,
             webhook_url,
             metadata
           )
           values (${values})
-          returning ${rowFields}
+          returning ${returnedFields}
         `;
 
-    const row = rows[0];
-
-    return row ? mapRequestRow(row) : null;
+    return rows[0] ? mapRequestRow(rows[0]) : null;
   }
 }

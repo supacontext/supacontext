@@ -2,15 +2,15 @@
 
 import { Copy, KeyRound, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { CONTEXT_DEPTHS, type ContextDepth } from "@supacontext/core";
+import { RESOLVED_EFFORTS, type ResolvedEffort } from "@supacontext/core";
 import { parseApiKeyForm } from "../../../lib/api-key-form";
-import { formatDateTime } from "../../../lib/usage-formatting";
+import { formatDateTime, formatEffort } from "../../../lib/usage-formatting";
 
 type DashboardApiKey = {
   id: string;
   name: string;
   prefix: string;
-  maxDepth: ContextDepth;
+  maxEffort: ResolvedEffort;
   monthlyCreditLimit: number | null;
   monthToDateCredits: number;
   lastUsedAt: string | null;
@@ -34,7 +34,7 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [monthlyCreditLimit, setMonthlyCreditLimit] = useState("");
-  const [maxDepth, setMaxDepth] = useState<ContextDepth>("deep");
+  const [maxEffort, setMaxEffort] = useState<ResolvedEffort>("x_high");
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -49,7 +49,7 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
     const parsed = parseApiKeyForm({
       name,
       monthlyCreditLimit,
-      maxDepth,
+      maxEffort,
     });
 
     if (!parsed.ok) {
@@ -78,7 +78,7 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
       setRawKey(data.rawKey);
       setName("");
       setMonthlyCreditLimit("");
-      setMaxDepth("deep");
+      setMaxEffort("x_high");
       setDialogOpen(false);
     } finally {
       setPending(false);
@@ -156,7 +156,7 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
                   <strong>{key.name}</strong>
                   <span>{key.prefix}...</span>
                 </div>
-                <span>{key.maxDepth}</span>
+                <span>{formatEffort(key.maxEffort)}</span>
                 <span>
                   {key.monthlyCreditLimit === null ? "Unlimited" : key.monthlyCreditLimit}
                 </span>
@@ -216,14 +216,14 @@ export function KeyManagementClient({ initialKeys }: { initialKeys: DashboardApi
               />
             </label>
             <label className="field">
-              <span>Max Depth Level</span>
+              <span>Max Effort Level</span>
               <select
-                value={maxDepth}
-                onChange={(event) => setMaxDepth(event.target.value as ContextDepth)}
+                value={maxEffort}
+                onChange={(event) => setMaxEffort(event.target.value as ResolvedEffort)}
               >
-                {CONTEXT_DEPTHS.map((depth) => (
-                  <option key={depth} value={depth}>
-                    {depth}
+                {RESOLVED_EFFORTS.map((effort) => (
+                  <option key={effort} value={effort}>
+                    {formatEffort(effort)}
                   </option>
                 ))}
               </select>

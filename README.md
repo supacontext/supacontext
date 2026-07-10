@@ -1,18 +1,18 @@
 # Supacontext
 
-Developer API for giving AI agents compact, cited, up-to-date public context from web, Reddit, X, and YouTube.
+Developer API for giving AI agents compact, cited, up-to-date public context from web, Reddit, X, YouTube, Facebook, news, forums, places, LinkedIn, Hacker News, and GitHub.
 
-Supacontext is not a raw search API, scraper, or provider-output passthrough. Public responses are JSON-only compiled context with citations, gaps, and usage metadata.
+Supacontext compiles public provider data into JSON-only context with citations, gaps, and usage metadata. Raw provider payloads stay server-side.
 
 ## Services
 
 - `apps/web` - Next.js dashboard, docs, API-key management, usage, playground, billing UI, Creem dashboard routes.
 - `apps/api` - Public HTTP API. `POST /v1/context`, `GET /v1/context/:id`, `/health`.
 - `apps/worker` - QStash-triggered context worker. Runs provider orchestration and writes compiled public results.
-- `packages/core` - product constants, depth pricing, plans, validation, API-key hashing.
+- `packages/core` - product constants, effort profiles, auditable pricing, plans, validation, API-key hashing.
 - `packages/db` - Postgres client and typed query helpers.
 - `packages/billing` - typed Creem adapter, webhook signature verification, normalized billing events.
-- `packages/providers` - provider adapters with timeouts, retries, normalized errors, and safe metadata logging.
+- `packages/providers` - provider adapters with timeouts, normalized errors, usage reporting, and safe metadata logging.
 - `packages/sdk` - dependency-free JavaScript SDK.
 
 ## Local Development
@@ -47,7 +47,7 @@ curl -X POST "$API_URL/v1/context" \
   -H "Authorization: Bearer $SUPACONTEXT_API_KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: demo-1" \
-  -d '{"query":"What changed in AI agent tooling this week?","depth":"standard","platforms":["web","reddit"],"async":true}'
+  -d '{"query":"What changed in AI agent tooling this week?","effort":"auto","max_credits":50,"platforms":["web","reddit","github"],"async":true}'
 ```
 
 Poll async jobs:
@@ -56,6 +56,35 @@ Poll async jobs:
 curl "$API_URL/v1/context/ctx_..." \
   -H "Authorization: Bearer $SUPACONTEXT_API_KEY"
 ```
+
+Effort is `low`, `medium`, `high`, `x_high`, or `auto`. Auto uses a router to choose a resolved
+effort. `max_credits` is optional and can only lower the request cap. Before paid work starts, the
+API atomically reserves the lower of the caller cap, internal effort cap, and available balance.
+The pricing registry charges actual provider operations and provider-reported model tokens.
+Settlement releases unused credits. Queued responses report `credits_reserved`, and final usage
+reports both `credits_charged` and `credits_reserved`.
+
+Credit conversion, upstream rates, request-mix assumptions, and plan margin estimates are recorded
+in [`docs/PRICING_ECONOMICS.md`](docs/PRICING_ECONOMICS.md).
+
+Public responses remain structured, cited JSON. Supacontext never returns raw provider payloads,
+full scrape output, or unbounded transcripts.
+
+The worker routes providers server-side:
+
+- Exa handles web search and page-content retrieval.
+- FetchLayer handles Reddit and X.
+- API Direct handles Facebook, YouTube discovery, news, forums, places, and the documented LinkedIn search endpoint.
+- Supadata handles YouTube transcripts.
+- Hacker News uses both the official Firebase API and Algolia search API.
+- GitHub uses the official API with a server-side personal access token.
+
+LinkedIn stays limited to API Direct post search. The remaining LinkedIn pricing rows did not have
+a public request contract that could be verified without gated documentation, so the adapter does
+not infer paths or parameters.
+
+The research agent initially sees one loader per platform, selects relevant platforms from the
+query, and only then loads platform-specific operations and guidance.
 
 ## JavaScript SDK
 
@@ -67,7 +96,12 @@ const supacontext = createSupaContext({
   baseUrl: process.env.SUPACONTEXT_API_URL,
 });
 
-const created = await supacontext.context.create({ query: "agent context APIs", async: true });
+const created = await supacontext.context.create({
+  query: "agent context APIs",
+  effort: "auto",
+  max_credits: 50,
+  async: true,
+});
 const result = created.status === "queued" ? await supacontext.context.poll(created.id) : created;
 ```
 
@@ -133,9 +167,11 @@ Worker:
 - `QSTASH_NEXT_SIGNING_KEY`
 - `EXA_API_KEY`
 - `FETCHLAYER_API_KEY`
-- `XQUIK_API_KEY`
+- `API_DIRECT_API_KEY`
+- `GITHUB_TOKEN` server-side only
 - `SUPADATA_API_KEY`
 - `DEEPSEEK_API_KEY`
+- `GROQ_API_KEY`
 - `VOYAGE_API_KEY`
 - `WORKER_PORT`
 - `LOG_LEVEL`
@@ -174,7 +210,7 @@ supabase link --project-ref <project-ref>
 supabase db push
 ```
 
-The schema includes profiles, workspaces, subscriptions, credit balances, API keys, context requests/results, provider call metadata, webhook receipts, and usage ledger triggers. `context_results` stores compiled public JSON only; provider raw payloads are not stored.
+The schema includes profiles, workspaces, subscriptions, credit balances, API keys, context requests/results, provider call metadata, webhook receipts, and reservation-aware usage ledger triggers. `context_results` stores compiled public JSON only; provider raw payloads are not stored.
 
 ## Billing
 
@@ -256,4 +292,4 @@ pnpm test
 pnpm build
 ```
 
-Targeted checks covered by tests include API-key auth, depth restrictions, monthly API-key caps, ledger debits/refunds, idempotent context creation, async queue lifecycle, provider failure handling, invalid model JSON repair/failure, safe public responses, Creem signature/event normalization, and SDK basics.
+Targeted checks covered by tests include API-key auth, effort restrictions, monthly API-key caps, reservations and settlement, idempotent context creation, async queue lifecycle, provider failure handling, invalid model JSON repair/failure, safe public responses, Creem signature/event normalization, and SDK basics.

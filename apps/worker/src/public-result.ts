@@ -1,4 +1,11 @@
-import { CONTEXT_DEPTHS, PLATFORMS, type ContextDepth, type Platform } from "@supacontext/core";
+import {
+  CONTEXT_EFFORTS,
+  PLATFORMS,
+  RESOLVED_EFFORTS,
+  type ContextEffort,
+  type Platform,
+  type ResolvedEffort,
+} from "@supacontext/core";
 import { z } from "zod";
 
 const confidenceSchema = z.enum(["low", "medium", "high"]);
@@ -34,8 +41,10 @@ export const publicContextResultSchema = z
     gaps: z.array(z.string().min(1).max(500)).max(20),
     usage: z
       .object({
-        credits_charged: z.number().int().nonnegative(),
-        depth: z.enum(CONTEXT_DEPTHS),
+        credits_charged: z.number().nonnegative(),
+        credits_reserved: z.number().nonnegative(),
+        effort: z.enum(CONTEXT_EFFORTS),
+        resolved_effort: z.enum(RESOLVED_EFFORTS),
         platforms_used: z.array(z.enum(PLATFORMS)).max(PLATFORMS.length),
         sources_considered: z.number().int().nonnegative(),
         sources_used: z.number().int().nonnegative(),
@@ -74,7 +83,9 @@ export type PublicSource = PublicContextResult["sources"][number];
 
 export type ResultUsageInput = {
   creditsCharged: number;
-  depth: ContextDepth;
+  creditsReserved?: number;
+  effort: ContextEffort;
+  resolvedEffort: ResolvedEffort;
   platformsUsed: Platform[];
   sourcesConsidered: number;
   sourcesUsed: number;
@@ -100,7 +111,9 @@ export function cleanPublicText(value: unknown, maxLength: number): string {
 export function buildUsage(input: ResultUsageInput): PublicContextResult["usage"] {
   return {
     credits_charged: input.creditsCharged,
-    depth: input.depth,
+    credits_reserved: input.creditsReserved ?? 0,
+    effort: input.effort,
+    resolved_effort: input.resolvedEffort,
     platforms_used: input.platformsUsed,
     sources_considered: input.sourcesConsidered,
     sources_used: input.sourcesUsed,

@@ -8,7 +8,7 @@ const sources = [
   { name: "Google Maps", icon: "/source-logos/maps.svg" },
   { name: "News", icon: "/source-logos/news.svg" },
   { name: "Hacker News", icon: "/source-logos/hacker-news.svg" },
-  { name: "Product Hunt", icon: "/source-logos/product-hunt.svg" },
+  { name: "Product Hunt", icon: "/source-logos/product-hunt.svg", comingSoon: true },
   { name: "YouTube", icon: "/source-logos/youtube.svg" },
   { name: "Forums", icon: "/source-logos/forums.svg" },
   { name: "Facebook", icon: "/source-logos/facebook.svg" },
@@ -22,7 +22,7 @@ export function SourcesSection() {
   return (
     <section className="section scSourcesSection" aria-labelledby="sources-title">
       <div className="sectionHeader centeredHeader">
-        <h2 id="sources-title">14+ sources. One clean response.</h2>
+        <h2 id="sources-title">11 platforms. One clean response.</h2>
         <p className="mutedText scSourcesSub">
           Send one query. Supacontext gathers the evidence, cuts the noise, and returns compact JSON
           your agent can cite.

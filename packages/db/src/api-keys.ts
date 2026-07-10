@@ -5,16 +5,23 @@ export async function findActiveApiKeyByHash(
   sql: postgres.Sql,
   keyHash: string,
 ): Promise<ApiKeyRow | null> {
-  const rows = await sql<ApiKeyRow[]>`
+  const rows = await sql<
+    Array<
+      Omit<ApiKeyRow, "monthly_credit_limit_microcredits" | "month_to_date_microcredits"> & {
+        monthly_credit_limit_microcredits: string | null;
+        month_to_date_microcredits: string;
+      }
+    >
+  >`
     select
       id,
       workspace_id,
       name,
       key_hash,
       prefix,
-      max_depth,
-      monthly_credit_limit,
-      month_to_date_credits,
+      max_effort,
+      monthly_credit_limit_microcredits::text,
+      month_to_date_microcredits::text,
       last_used_at,
       revoked_at,
       created_at
@@ -24,7 +31,18 @@ export async function findActiveApiKeyByHash(
     limit 1
   `;
 
-  return rows[0] ?? null;
+  const row = rows[0];
+
+  return row
+    ? {
+        ...row,
+        monthly_credit_limit_microcredits:
+          row.monthly_credit_limit_microcredits === null
+            ? null
+            : BigInt(row.monthly_credit_limit_microcredits),
+        month_to_date_microcredits: BigInt(row.month_to_date_microcredits),
+      }
+    : null;
 }
 
 export async function markApiKeyUsed(sql: postgres.Sql, apiKeyId: string): Promise<void> {

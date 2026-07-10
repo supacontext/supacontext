@@ -3,19 +3,25 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { isPaidPlan, type PaidPlanSlug } from "@supacontext/billing";
 import {
-  CONTEXT_DEPTHS,
+  CONTEXT_EFFORTS,
+  CREDIT_MICROS,
+  EFFORT_PROFILES,
   PLANS,
   PLAN_SLUGS,
   PLATFORMS,
+  PRICING_VERSION,
+  creditDecimalToMicrocredits,
+  creditMicrocreditsToDisplayNumber,
   createApiKeyMaterial,
-  type ContextDepth,
+  type ContextEffort,
   type PaidBillingInterval,
   type Platform,
   type PlanSlug,
   type PublicContextResponse,
   type RequestStatus,
+  type ResolvedEffort,
 } from "@supacontext/core";
-import { createDatabaseClient, type ApiKeyRow, type DatabaseClient } from "@supacontext/db";
+import { createDatabaseClient, type DatabaseClient } from "@supacontext/db";
 import { authorizeUsage } from "@supacontext/usage";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import type { User } from "@workos-inc/node";
@@ -38,7 +44,7 @@ export type DashboardApiKey = {
   id: string;
   name: string;
   prefix: string;
-  maxDepth: ContextDepth;
+  maxEffort: ResolvedEffort;
   monthlyCreditLimit: number | null;
   monthToDateCredits: number;
   lastUsedAt: string | null;
@@ -62,10 +68,12 @@ export type UsageRequest = {
   id: string;
   keyName: string | null;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  resolvedEffort: ResolvedEffort | null;
   platforms: Platform[];
   status: RequestStatus;
   creditsCharged: number;
+  creditsReserved: number;
   sourcesUsed: number;
   cached: boolean;
   latencyMs: number | null;
@@ -78,7 +86,7 @@ export type UsageFilters = {
   from?: string;
   to?: string;
   keyId?: string;
-  depth?: ContextDepth;
+  effort?: ContextEffort;
   status?: RequestStatus;
 };
 
@@ -94,9 +102,9 @@ type ApiKeySelectRow = {
   id: string;
   name: string;
   prefix: string;
-  max_depth: ContextDepth;
-  monthly_credit_limit: number | null;
-  month_to_date_credits: number;
+  max_effort: ResolvedEffort;
+  monthly_credit_limit_microcredits: string | null;
+  month_to_date_microcredits: string;
   last_used_at: Date | null;
   revoked_at: Date | null;
   created_at: Date;
@@ -106,10 +114,12 @@ type UsageRequestRow = {
   id: string;
   key_name: string | null;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  resolved_effort: ResolvedEffort | null;
   platforms: Platform[];
   status: RequestStatus;
-  spent_credits: number;
+  reserved_microcredits: string;
+  spent_microcredits: string;
   error_code: string | null;
   error_message: string | null;
   started_at: Date | null;
@@ -117,6 +127,13 @@ type UsageRequestRow = {
   created_at: Date;
   response_json: unknown | null;
   citation_count: number | null;
+};
+
+type PlaygroundApiKeyRow = {
+  id: string;
+  max_effort: ResolvedEffort;
+  monthly_credit_limit_microcredits: string | null;
+  month_to_date_microcredits: string;
 };
 
 export class DashboardError extends Error {
@@ -171,12 +188,64 @@ function isPlanSlug(value: unknown): value is PlanSlug {
   return typeof value === "string" && PLAN_SLUGS.includes(value as PlanSlug);
 }
 
-function isContextDepth(value: unknown): value is ContextDepth {
-  return typeof value === "string" && CONTEXT_DEPTHS.includes(value as ContextDepth);
+function isContextEffort(value: unknown): value is ContextEffort {
+  return typeof value === "string" && CONTEXT_EFFORTS.includes(value as ContextEffort);
 }
 
 function isPlatform(value: unknown): value is Platform {
   return typeof value === "string" && PLATFORMS.includes(value as Platform);
+}
+
+function parseCallerMaxCreditMicros(value: unknown): bigint | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== "number") {
+    throw new DashboardError(400, "INVALID_MAX_CREDITS", "Max credits must be a number.");
+  }
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new DashboardError(
+      400,
+      "INVALID_MAX_CREDITS",
+      "Max credits must be a non-negative finite number.",
+    );
+  }
+
+  const maximumCredits = creditMicrocreditsToDisplayNumber(
+    EFFORT_PROFILES.auto.maximumCreditMicros,
+  );
+
+  if (value > maximumCredits) {
+    throw new DashboardError(
+      400,
+      "INVALID_MAX_CREDITS",
+      `Max credits must be greater than 0 and no more than ${maximumCredits}.`,
+    );
+  }
+
+  let creditMicros: bigint;
+
+  try {
+    creditMicros = creditDecimalToMicrocredits(value);
+  } catch {
+    throw new DashboardError(
+      400,
+      "INVALID_MAX_CREDITS",
+      "Max credits must use no more than 6 decimal places.",
+    );
+  }
+
+  if (creditMicros <= 0n || creditMicros > EFFORT_PROFILES.auto.maximumCreditMicros) {
+    throw new DashboardError(
+      400,
+      "INVALID_MAX_CREDITS",
+      `Max credits must be greater than 0 and no more than ${maximumCredits}.`,
+    );
+  }
+
+  return creditMicros;
 }
 
 function displayNameFromUser(user: User): string | null {
@@ -194,9 +263,12 @@ function mapApiKey(row: ApiKeySelectRow): DashboardApiKey {
     id: row.id,
     name: row.name,
     prefix: row.prefix,
-    maxDepth: row.max_depth,
-    monthlyCreditLimit: row.monthly_credit_limit,
-    monthToDateCredits: row.month_to_date_credits,
+    maxEffort: row.max_effort,
+    monthlyCreditLimit:
+      row.monthly_credit_limit_microcredits === null
+        ? null
+        : creditMicrocreditsToDisplayNumber(BigInt(row.monthly_credit_limit_microcredits)),
+    monthToDateCredits: creditMicrocreditsToDisplayNumber(BigInt(row.month_to_date_microcredits)),
     lastUsedAt: toIso(row.last_used_at),
     revokedAt: toIso(row.revoked_at),
     createdAt: row.created_at.toISOString(),
@@ -218,10 +290,18 @@ function requestStatusFromError(
     return new DashboardError(402, "INSUFFICIENT_CREDITS", "Insufficient account credits.");
   }
 
+  if (reason === "caller_cap") {
+    return new DashboardError(
+      400,
+      "BUDGET_TOO_LOW",
+      "Max credits cannot fund the minimum safe work for this effort.",
+    );
+  }
+
   return new DashboardError(
     403,
-    "DEPTH_NOT_ALLOWED",
-    "Requested depth is not allowed for this API key or plan.",
+    "EFFORT_NOT_ALLOWED",
+    "Requested effort exceeds this API key's maximum effort.",
   );
 }
 
@@ -297,10 +377,12 @@ function mapUsageRequest(row: UsageRequestRow): UsageRequest {
     id: row.id,
     keyName: row.key_name,
     query: row.query,
-    depth: row.depth,
+    effort: row.effort,
+    resolvedEffort: row.resolved_effort,
     platforms: row.platforms,
     status: row.status,
-    creditsCharged: row.spent_credits,
+    creditsCharged: creditMicrocreditsToDisplayNumber(BigInt(row.spent_microcredits)),
+    creditsReserved: creditMicrocreditsToDisplayNumber(BigInt(row.reserved_microcredits)),
     sourcesUsed: usage?.sources_used ?? row.citation_count ?? 0,
     cached: usage?.cached ?? false,
     latencyMs: latencyMs !== null && latencyMs >= 0 ? latencyMs : null,
@@ -380,15 +462,15 @@ async function ensureWorkspaceForUser(input: {
       insert into usage_ledger (
         workspace_id,
         event_type,
-        credits,
+        credit_microcredits,
         idempotency_key,
         metadata
       )
       values (
         ${workspaceId},
         'grant'::ledger_event_type,
-        ${PLANS.free.includedCredits},
-        ${`trial-grant:${workspaceId}`},
+        ${(BigInt(PLANS.free.includedCredits) * CREDIT_MICROS).toString()},
+        ${`free-grant:${workspaceId}`},
         ${transaction.json({ plan: "free", source: "dashboard_signup" })}
       )
       on conflict (workspace_id, idempotency_key)
@@ -461,27 +543,26 @@ export async function getPlanState(workspaceId: string): Promise<DashboardPlanSt
 
 export async function getCreditBalance(workspaceId: string): Promise<number> {
   const sql = getDatabase();
-  const rows = await sql<Array<{ balance: number }>>`
-    select balance
+  const rows = await sql<Array<{ balance_microcredits: string }>>`
+    select balance_microcredits::text
     from credit_balances
     where workspace_id = ${workspaceId}
     limit 1
   `;
 
-  return rows[0]?.balance ?? 0;
+  return creditMicrocreditsToDisplayNumber(BigInt(rows[0]?.balance_microcredits ?? "0"));
 }
 
 export async function getMonthUsage(workspaceId: string): Promise<number> {
   const sql = getDatabase();
-  const rows = await sql<Array<{ credits: number }>>`
-    select coalesce(sum(abs(credits)), 0)::int as credits
-    from usage_ledger
+  const rows = await sql<Array<{ spent_microcredits: string }>>`
+    select coalesce(sum(spent_microcredits), 0)::text as spent_microcredits
+    from context_requests
     where workspace_id = ${workspaceId}
-      and event_type = 'debit'
-      and created_at >= date_trunc('month', now())
+      and settled_at >= date_trunc('month', now())
   `;
 
-  return rows[0]?.credits ?? 0;
+  return creditMicrocreditsToDisplayNumber(BigInt(rows[0]?.spent_microcredits ?? "0"));
 }
 
 export async function listApiKeys(workspaceId: string): Promise<DashboardApiKey[]> {
@@ -491,9 +572,9 @@ export async function listApiKeys(workspaceId: string): Promise<DashboardApiKey[
       id,
       name,
       prefix,
-      max_depth,
-      monthly_credit_limit,
-      month_to_date_credits,
+      max_effort,
+      monthly_credit_limit_microcredits::text,
+      month_to_date_microcredits::text,
       last_used_at,
       revoked_at,
       created_at
@@ -512,10 +593,12 @@ export async function listRecentRequests(workspaceId: string, limit = 5): Promis
       context_requests.id,
       api_keys.name as key_name,
       context_requests.query,
-      context_requests.depth,
+      context_requests.effort,
+      context_requests.resolved_effort,
       context_requests.platforms,
       context_requests.status,
-      context_requests.spent_credits,
+      context_requests.reserved_microcredits::text,
+      context_requests.spent_microcredits::text,
       context_requests.error_code,
       context_requests.error_message,
       context_requests.started_at,
@@ -540,8 +623,8 @@ export async function listUsageRequests(
 ): Promise<UsageRequest[]> {
   const sql = getDatabase();
   const keyFilter = filters.keyId ? sql`and context_requests.api_key_id = ${filters.keyId}` : sql``;
-  const depthFilter = filters.depth
-    ? sql`and context_requests.depth = ${filters.depth}::context_depth`
+  const effortFilter = filters.effort
+    ? sql`and context_requests.effort = ${filters.effort}::context_effort`
     : sql``;
   const statusFilter = filters.status
     ? sql`and context_requests.status = ${filters.status}::request_status`
@@ -555,10 +638,12 @@ export async function listUsageRequests(
       context_requests.id,
       api_keys.name as key_name,
       context_requests.query,
-      context_requests.depth,
+      context_requests.effort,
+      context_requests.resolved_effort,
       context_requests.platforms,
       context_requests.status,
-      context_requests.spent_credits,
+      context_requests.reserved_microcredits::text,
+      context_requests.spent_microcredits::text,
       context_requests.error_code,
       context_requests.error_message,
       context_requests.started_at,
@@ -571,7 +656,7 @@ export async function listUsageRequests(
     left join context_results on context_results.context_request_id = context_requests.id
     where context_requests.workspace_id = ${workspaceId}
       ${keyFilter}
-      ${depthFilter}
+      ${effortFilter}
       ${statusFilter}
       ${fromFilter}
       ${toFilter}
@@ -591,9 +676,9 @@ export async function createDashboardApiKey(
       ? {
           name: (input as { name?: unknown }).name,
           monthlyCreditLimit: (input as { monthlyCreditLimit?: unknown }).monthlyCreditLimit,
-          maxDepth: (input as { maxDepth?: unknown }).maxDepth,
+          maxEffort: (input as { maxEffort?: unknown }).maxEffort,
         }
-      : { name: "", maxDepth: "" },
+      : { name: "", maxEffort: "" },
   );
 
   if (!parsed.ok) {
@@ -613,8 +698,8 @@ export async function createDashboardApiKey(
       name,
       key_hash,
       prefix,
-      max_depth,
-      monthly_credit_limit
+      max_effort,
+      monthly_credit_limit_microcredits
     )
     values (
       ${workspace.workspaceId},
@@ -622,16 +707,20 @@ export async function createDashboardApiKey(
       ${parsed.value.name},
       ${material.hash},
       ${material.prefix},
-      ${parsed.value.maxDepth}::context_depth,
-      ${parsed.value.monthlyCreditLimit}
+      ${parsed.value.maxEffort}::context_effort,
+      ${
+        parsed.value.monthlyCreditLimit === null
+          ? null
+          : (BigInt(parsed.value.monthlyCreditLimit) * CREDIT_MICROS).toString()
+      }
     )
     returning
       id,
       name,
       prefix,
-      max_depth,
-      monthly_credit_limit,
-      month_to_date_credits,
+      max_effort,
+      monthly_credit_limit_microcredits::text,
+      month_to_date_microcredits::text,
       last_used_at,
       revoked_at,
       created_at
@@ -670,16 +759,21 @@ export async function runPlaygroundRequest(
 ): Promise<PublicContextResponse> {
   const body = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const query = typeof body.query === "string" ? body.query.trim() : "";
-  const depth = isContextDepth(body.depth) ? body.depth : "standard";
-  const platforms = Array.isArray(body.platforms)
-    ? body.platforms.filter(isPlatform)
-    : [...PLATFORMS];
+  const effort = body.effort === undefined ? "medium" : body.effort;
+  const callerMaxCreditMicros = parseCallerMaxCreditMicros(body.max_credits);
+  const hasManualPlatforms = body.platforms !== undefined;
+  const platforms = Array.isArray(body.platforms) ? body.platforms : [...PLATFORMS];
 
   if (!query) {
     throw new DashboardError(400, "QUERY_REQUIRED", "Query is required.");
   }
 
-  if (platforms.length === 0 || new Set(platforms).size !== platforms.length) {
+  if (
+    (hasManualPlatforms && !Array.isArray(body.platforms)) ||
+    platforms.length === 0 ||
+    platforms.some((platform) => !isPlatform(platform)) ||
+    new Set(platforms).size !== platforms.length
+  ) {
     throw new DashboardError(400, "INVALID_PLATFORMS", "Choose at least one unique platform.");
   }
 
@@ -687,22 +781,21 @@ export async function runPlaygroundRequest(
     throw new DashboardError(400, "QUERY_TOO_LONG", "Query must be 4000 characters or fewer.");
   }
 
+  if (!isContextEffort(effort)) {
+    throw new DashboardError(400, "INVALID_EFFORT", "Choose a supported effort.");
+  }
+
+  const selectedPlatforms = platforms as Platform[];
+
   const sql = getDatabase();
 
   const requestId = await sql.begin(async (transaction) => {
-    const apiKeyRows = await transaction<ApiKeyRow[]>`
+    const apiKeyRows = await transaction<PlaygroundApiKeyRow[]>`
       select
         id,
-        workspace_id,
-        name,
-        key_hash,
-        prefix,
-        max_depth,
-        monthly_credit_limit,
-        month_to_date_credits,
-        last_used_at,
-        revoked_at,
-        created_at
+        max_effort,
+        monthly_credit_limit_microcredits::text,
+        month_to_date_microcredits::text
       from api_keys
       where workspace_id = ${workspace.workspaceId}
         and revoked_at is null
@@ -720,20 +813,22 @@ export async function runPlaygroundRequest(
       );
     }
 
-    const plan = await getPlanState(workspace.workspaceId);
-    const balanceRows = await transaction<Array<{ balance: number }>>`
-      select balance
+    const balanceRows = await transaction<Array<{ balance_microcredits: string }>>`
+      select balance_microcredits::text
       from credit_balances
       where workspace_id = ${workspace.workspaceId}
       for update
     `;
     const authorization = authorizeUsage({
-      plan: plan.slug,
-      depth,
-      balance: balanceRows[0]?.balance ?? 0,
-      apiKeyMaxDepth: apiKey.max_depth,
-      monthlyCreditLimit: apiKey.monthly_credit_limit,
-      monthToDateCredits: apiKey.month_to_date_credits,
+      effort,
+      balanceCreditMicros: BigInt(balanceRows[0]?.balance_microcredits ?? "0"),
+      callerMaxCreditMicros,
+      apiKeyMaxEffort: apiKey.max_effort,
+      monthlyCreditLimitMicros:
+        apiKey.monthly_credit_limit_microcredits === null
+          ? null
+          : BigInt(apiKey.monthly_credit_limit_microcredits),
+      monthToDateCreditMicros: BigInt(apiKey.month_to_date_microcredits),
     });
 
     if (!authorization.allowed) {
@@ -741,6 +836,7 @@ export async function runPlaygroundRequest(
     }
 
     const createdRequestId = createContextRequestId();
+    const resolvedEffort = effort === "auto" ? null : effort;
 
     await transaction`
       insert into context_requests (
@@ -748,12 +844,17 @@ export async function runPlaygroundRequest(
         workspace_id,
         api_key_id,
         query,
-        depth,
+        effort,
+        resolved_effort,
+        max_resolved_effort,
         platforms,
         platform_mode,
         status,
-        requested_credits,
-        spent_credits,
+        caller_max_microcredits,
+        effective_cap_microcredits,
+        reserved_microcredits,
+        spent_microcredits,
+        pricing_version,
         metadata
       )
       values (
@@ -761,12 +862,17 @@ export async function runPlaygroundRequest(
         ${workspace.workspaceId},
         ${apiKey.id},
         ${query},
-        ${depth}::context_depth,
-        ${platforms}::platform[],
-        'manual',
+        ${effort}::context_effort,
+        ${resolvedEffort}::context_effort,
+        ${apiKey.max_effort}::context_effort,
+        ${selectedPlatforms}::platform[],
+        ${hasManualPlatforms ? "manual" : "auto"},
         'queued'::request_status,
-        ${authorization.requiredCredits},
-        ${authorization.requiredCredits},
+        ${callerMaxCreditMicros?.toString() ?? null},
+        ${authorization.reservationCreditMicros.toString()},
+        ${authorization.reservationCreditMicros.toString()},
+        0,
+        ${PRICING_VERSION},
         ${transaction.json({ source: "dashboard_playground" })}
       )
     `;
@@ -775,25 +881,26 @@ export async function runPlaygroundRequest(
       insert into usage_ledger (
         workspace_id,
         event_type,
-        credits,
+        credit_microcredits,
         context_request_id,
         idempotency_key,
         metadata
       )
       values (
         ${workspace.workspaceId},
-        'debit'::ledger_event_type,
-        ${authorization.requiredCredits * -1},
+        'reservation'::ledger_event_type,
+        ${(authorization.reservationCreditMicros * -1n).toString()},
         ${createdRequestId},
-        ${`request:${createdRequestId}`},
-        ${transaction.json({ api_key_id: apiKey.id, depth })}
+        ${`reservation:${createdRequestId}`},
+        ${transaction.json({ api_key_id: apiKey.id, effort, pricing_version: PRICING_VERSION })}
       )
     `;
 
     await transaction`
       update api_keys
       set
-        month_to_date_credits = month_to_date_credits + ${authorization.requiredCredits},
+        month_to_date_microcredits =
+          month_to_date_microcredits + ${authorization.reservationCreditMicros.toString()},
         last_used_at = now()
       where id = ${apiKey.id}
     `;
@@ -811,6 +918,12 @@ export async function runPlaygroundRequest(
         ? error.message
         : "Context worker failed to process the playground request.",
     );
+    const completed = await getStoredPlaygroundRequest(workspace.workspaceId, requestId);
+
+    if (completed?.status === "completed") {
+      return completed;
+    }
+
     throw error;
   }
 
@@ -839,25 +952,61 @@ async function failPlaygroundRequest(
       Array<{
         workspace_id: string;
         api_key_id: string | null;
-        spent_credits: number;
+        effective_cap_microcredits: string;
+        settled_at: Date | null;
+        status: RequestStatus;
       }>
     >`
-      select workspace_id, api_key_id, spent_credits
+      select
+        workspace_id,
+        api_key_id,
+        effective_cap_microcredits::text,
+        settled_at,
+        status
       from context_requests
       where id = ${requestId}
       for update
     `;
     const request = rows[0];
 
-    if (!request) {
+    if (!request || request.settled_at || request.status === "completed") {
       return;
     }
+
+    await transaction`
+      update context_cost_events
+      set
+        status = 'uncertain',
+        actual_microcredits = reserved_microcredits,
+        settled_at = coalesce(settled_at, now())
+      where context_request_id = ${requestId}
+        and status = 'pending'
+    `;
+
+    const committedRows = await transaction<Array<{ committed_microcredits: string }>>`
+      select coalesce(sum(
+        case
+          when status in ('pending', 'uncertain') then reserved_microcredits
+          when status = 'settled' then coalesce(actual_microcredits, reserved_microcredits)
+          else 0
+        end
+      ), 0)::text as committed_microcredits
+      from context_cost_events
+      where context_request_id = ${requestId}
+    `;
+    const cap = BigInt(request.effective_cap_microcredits);
+    const measured = BigInt(committedRows[0]?.committed_microcredits ?? "0");
+    const actual = measured > cap ? cap : measured;
+    const release = cap - actual;
 
     await transaction`
       update context_requests
       set
         status = 'failed',
-        spent_credits = 0,
+        settled_at = now(),
+        lease_expires_at = null,
+        reserved_microcredits = 0,
+        spent_microcredits = ${actual.toString()},
         error_code = ${errorCode},
         error_message = ${errorMessage},
         completed_at = now()
@@ -865,26 +1014,26 @@ async function failPlaygroundRequest(
         and status <> 'completed'
     `;
 
-    if (request.spent_credits <= 0) {
+    if (release <= 0n) {
       return;
     }
 
-    const refundRows = await transaction<Array<{ id: string }>>`
+    const releaseRows = await transaction<Array<{ id: string }>>`
       insert into usage_ledger (
         workspace_id,
         event_type,
-        credits,
+        credit_microcredits,
         context_request_id,
         idempotency_key,
         metadata
       )
       values (
         ${request.workspace_id},
-        'refund'::ledger_event_type,
-        ${request.spent_credits},
+        'release'::ledger_event_type,
+        ${release.toString()},
         ${requestId},
-        ${`refund:${requestId}`},
-        ${transaction.json({ reason: errorCode })}
+        ${`release:${requestId}`},
+        ${transaction.json({ reason: errorCode, pricing_version: PRICING_VERSION })}
       )
       on conflict (workspace_id, idempotency_key)
       where idempotency_key is not null
@@ -892,10 +1041,13 @@ async function failPlaygroundRequest(
       returning id
     `;
 
-    if (refundRows[0] && request.api_key_id) {
+    if (releaseRows[0] && request.api_key_id) {
       await transaction`
         update api_keys
-        set month_to_date_credits = greatest(0, month_to_date_credits - ${request.spent_credits})
+        set month_to_date_microcredits = greatest(
+          0,
+          month_to_date_microcredits - ${release.toString()}
+        )
         where id = ${request.api_key_id}
       `;
     }
@@ -911,20 +1063,24 @@ export async function getStoredPlaygroundRequest(
     Array<{
       id: string;
       query: string;
-      depth: ContextDepth;
+      effort: ContextEffort;
+      resolved_effort: ResolvedEffort | null;
       platforms: Platform[];
       status: RequestStatus;
-      spent_credits: number;
+      reserved_microcredits: string;
+      spent_microcredits: string;
       response_json: unknown | null;
     }>
   >`
     select
       context_requests.id,
       context_requests.query,
-      context_requests.depth,
+      context_requests.effort,
+      context_requests.resolved_effort,
       context_requests.platforms,
       context_requests.status,
-      context_requests.spent_credits,
+      context_requests.reserved_microcredits::text,
+      context_requests.spent_microcredits::text,
       context_results.response_json
     from context_requests
     left join context_results on context_results.context_request_id = context_requests.id
@@ -948,23 +1104,35 @@ export async function getStoredPlaygroundRequest(
           usage?: PublicContextResponse["usage"];
         })
       : {};
+  const creditsCharged = creditMicrocreditsToDisplayNumber(BigInt(row.spent_microcredits));
+  const creditsReserved = creditMicrocreditsToDisplayNumber(BigInt(row.reserved_microcredits));
+  const usage = result.usage ?? {
+    credits_charged: creditsCharged,
+    credits_reserved: creditsReserved,
+    effort: row.effort,
+    ...(row.resolved_effort ? { resolved_effort: row.resolved_effort } : {}),
+    platforms_used: row.platforms,
+    sources_considered: 0,
+    sources_used: 0,
+    cached: false,
+  };
 
   return {
     id: row.id,
     query: row.query,
-    depth: row.depth,
+    effort: row.effort,
+    ...(row.resolved_effort ? { resolved_effort: row.resolved_effort } : {}),
     status: row.status,
     answer: result.answer ?? null,
     context_pack: result.context_pack ?? [],
     sources: result.sources ?? [],
     gaps: result.gaps ?? [],
-    usage: result.usage ?? {
-      credits_charged: row.spent_credits,
-      depth: row.depth,
-      platforms_used: row.platforms,
-      sources_considered: 0,
-      sources_used: 0,
-      cached: false,
+    usage: {
+      ...usage,
+      credits_charged: creditsCharged,
+      credits_reserved: creditsReserved,
+      effort: row.effort,
+      ...(row.resolved_effort ? { resolved_effort: row.resolved_effort } : {}),
     },
   };
 }
@@ -973,14 +1141,14 @@ export function parseUsageFilters(
   input: Record<string, string | string[] | undefined>,
 ): UsageFilters {
   const filters: UsageFilters = {};
-  const depth = Array.isArray(input.depth) ? input.depth[0] : input.depth;
+  const effort = Array.isArray(input.effort) ? input.effort[0] : input.effort;
   const status = Array.isArray(input.status) ? input.status[0] : input.status;
   const keyId = Array.isArray(input.key) ? input.key[0] : input.key;
   const from = Array.isArray(input.from) ? input.from[0] : input.from;
   const to = Array.isArray(input.to) ? input.to[0] : input.to;
 
-  if (depth && isContextDepth(depth)) {
-    filters.depth = depth;
+  if (effort && isContextEffort(effort)) {
+    filters.effort = effort;
   }
 
   if (status && ["queued", "running", "completed", "failed", "cancelled"].includes(status)) {

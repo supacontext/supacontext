@@ -1,7 +1,22 @@
-export const CONTEXT_DEPTHS = ["fast", "standard", "thorough", "deep"] as const;
-export type ContextDepth = (typeof CONTEXT_DEPTHS)[number];
+export const CONTEXT_EFFORTS = ["low", "medium", "high", "x_high", "auto"] as const;
+export type ContextEffort = (typeof CONTEXT_EFFORTS)[number];
 
-export const PLATFORMS = ["web", "reddit", "x", "youtube"] as const;
+export const RESOLVED_EFFORTS = ["low", "medium", "high", "x_high"] as const;
+export type ResolvedEffort = (typeof RESOLVED_EFFORTS)[number];
+
+export const PLATFORMS = [
+  "web",
+  "reddit",
+  "x",
+  "youtube",
+  "facebook",
+  "news",
+  "forums",
+  "places",
+  "linkedin",
+  "hackernews",
+  "github",
+] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export type PlatformMode = "auto" | "manual";
 
@@ -14,18 +29,37 @@ export type SelfServePaidPlanSlug = (typeof SELF_SERVE_PAID_PLAN_SLUGS)[number];
 export const PAID_BILLING_INTERVALS = ["month", "year"] as const;
 export type PaidBillingInterval = (typeof PAID_BILLING_INTERVALS)[number];
 
-export const PROVIDERS = ["exa", "fetchlayer", "xquik", "supadata", "deepseek", "voyage"] as const;
+export const PROVIDERS = [
+  "exa",
+  "fetchlayer",
+  "api_direct",
+  "supadata",
+  "deepseek",
+  "groq",
+  "voyage",
+  "hacker_news_firebase",
+  "hacker_news_algolia",
+  "github",
+] as const;
 export type ProviderName = (typeof PROVIDERS)[number];
 
 export const REQUEST_STATUSES = ["queued", "running", "completed", "failed", "cancelled"] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
-export const LEDGER_EVENT_TYPES = ["grant", "debit", "refund", "adjustment", "expiration"] as const;
+export const LEDGER_EVENT_TYPES = [
+  "grant",
+  "reservation",
+  "release",
+  "adjustment",
+  "expiration",
+] as const;
 export type LedgerEventType = (typeof LEDGER_EVENT_TYPES)[number];
 
 export type PublicContextUsage = {
   credits_charged: number;
-  depth: ContextDepth;
+  credits_reserved: number;
+  effort: ContextEffort;
+  resolved_effort?: ResolvedEffort;
   platforms_used: Platform[];
   sources_considered: number;
   sources_used: number;
@@ -35,7 +69,8 @@ export type PublicContextUsage = {
 export type PublicContextResponse = {
   id: string;
   query: string;
-  depth: ContextDepth;
+  effort: ContextEffort;
+  resolved_effort?: ResolvedEffort;
   status: RequestStatus;
   answer: string | null;
   context_pack: unknown[];

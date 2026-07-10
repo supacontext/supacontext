@@ -8,7 +8,7 @@ export function FAQSection() {
         <div className="sectionHeader centeredHeader">
           <h2 id="faq-title">Frequently asked questions</h2>
           <p className="mutedText">
-            Quick answers about context depth, integrations, credit usage, and keeping your agent
+            Quick answers about research effort, integrations, credit usage, and keeping your agent
             prompts clean.
           </p>
         </div>

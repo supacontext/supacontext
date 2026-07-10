@@ -1,18 +1,18 @@
-import { CONTEXT_DEPTHS, type ContextDepth } from "@supacontext/core";
+import { RESOLVED_EFFORTS, type ResolvedEffort } from "@supacontext/core";
 
 export type ApiKeyFormInput = {
   name: unknown;
   monthlyCreditLimit?: unknown;
-  maxDepth: unknown;
+  maxEffort: unknown;
 };
 
 export type ParsedApiKeyForm = {
   name: string;
   monthlyCreditLimit: number | null;
-  maxDepth: ContextDepth;
+  maxEffort: ResolvedEffort;
 };
 
-export type ApiKeyFormField = "name" | "monthlyCreditLimit" | "maxDepth";
+export type ApiKeyFormField = "name" | "monthlyCreditLimit" | "maxEffort";
 
 export type ApiKeyFormError = {
   field: ApiKeyFormField;
@@ -29,15 +29,15 @@ export type ApiKeyFormResult =
       errors: ApiKeyFormError[];
     };
 
-function isContextDepth(value: unknown): value is ContextDepth {
-  return typeof value === "string" && CONTEXT_DEPTHS.includes(value as ContextDepth);
+function isResolvedEffort(value: unknown): value is ResolvedEffort {
+  return typeof value === "string" && RESOLVED_EFFORTS.includes(value as ResolvedEffort);
 }
 
 export function parseApiKeyForm(input: ApiKeyFormInput): ApiKeyFormResult {
   const errors: ApiKeyFormError[] = [];
   const name = typeof input.name === "string" ? input.name.trim() : "";
   const limitValue = input.monthlyCreditLimit;
-  const maxDepth = isContextDepth(input.maxDepth) ? input.maxDepth : null;
+  const maxEffort = isResolvedEffort(input.maxEffort) ? input.maxEffort : null;
   let monthlyCreditLimit: number | null = null;
 
   if (!name) {
@@ -57,7 +57,7 @@ export function parseApiKeyForm(input: ApiKeyFormInput): ApiKeyFormResult {
       typeof limitValue === "number" ? limitValue : Number.parseInt(String(limitValue), 10);
 
     if (
-      !Number.isInteger(parsedLimit) ||
+      !Number.isSafeInteger(parsedLimit) ||
       parsedLimit < 0 ||
       String(limitValue).trim() !== String(parsedLimit)
     ) {
@@ -70,14 +70,14 @@ export function parseApiKeyForm(input: ApiKeyFormInput): ApiKeyFormResult {
     }
   }
 
-  if (!maxDepth) {
+  if (!maxEffort) {
     errors.push({
-      field: "maxDepth",
-      message: "Max depth level is invalid.",
+      field: "maxEffort",
+      message: "Max effort level is invalid.",
     });
   }
 
-  if (errors.length > 0 || !maxDepth) {
+  if (errors.length > 0 || !maxEffort) {
     return {
       ok: false,
       errors,
@@ -89,7 +89,7 @@ export function parseApiKeyForm(input: ApiKeyFormInput): ApiKeyFormResult {
     value: {
       name,
       monthlyCreditLimit,
-      maxDepth,
+      maxEffort,
     },
   };
 }

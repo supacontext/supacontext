@@ -1,39 +1,66 @@
-import { DEPTH_CREDIT_COST, PLAN_RATE_LIMITS, PLATFORMS } from "@supacontext/core";
+import { CONTEXT_EFFORTS, EFFORT_PROFILES, PLAN_RATE_LIMITS, PLATFORMS } from "@supacontext/core";
 import { SiteHeader } from "../../../components/site-header";
+import { formatEffort } from "../../../lib/usage-formatting";
 
-const toolSchema = `{
-  "name": "supacontext",
-  "description": "Get compact, cited, up-to-date public context for an AI agent.",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "query": {
-        "type": "string",
-        "description": "The research question or context request."
-      },
-      "depth": {
-        "type": "string",
-        "enum": ["fast", "standard", "thorough", "deep"],
-        "description": "Optional. Deep is only for the most demanding, broad, high-importance, or exhaustive research tasks where cost and latency are justified."
-      },
-      "platforms": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "enum": ["web", "reddit", "x", "youtube"]
+const toolSchema = JSON.stringify(
+  {
+    name: "supacontext",
+    description: "Get compact, cited, up-to-date public context for an AI agent.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The research question or context request.",
         },
-        "description": "Optional. Omit to use all supported public platforms."
-      }
+        effort: {
+          type: "string",
+          enum: CONTEXT_EFFORTS,
+          default: "medium",
+          description: "Research effort. Auto selects a resolved effort for the request.",
+        },
+        max_credits: {
+          type: "number",
+          exclusiveMinimum: 0,
+          maximum: 250,
+          description: "Optional caller cap. Supports up to six decimal places.",
+        },
+        platforms: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: PLATFORMS,
+          },
+          description: "Optional. Omit to let the research agent select relevant platforms.",
+        },
+        async: {
+          type: "boolean",
+          default: false,
+        },
+        webhook_url: {
+          type: "string",
+          format: "uri",
+          description: "Optional public HTTPS callback for async completion.",
+        },
+        metadata: {
+          type: "object",
+          description: "Optional caller metadata stored with the request.",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
     },
-    "required": ["query"],
-    "additionalProperties": false
-  }
-}`;
+  },
+  null,
+  2,
+);
 
 const errorCodes = [
   "invalid_request",
   "unauthorized",
-  "forbidden_depth",
+  "forbidden_effort",
+  "budget_too_low",
+  "budget_exhausted",
   "insufficient_credits",
   "rate_limited",
   "provider_error",
@@ -44,6 +71,14 @@ const errorCodes = [
   "internal_error",
 ];
 
+const effortModels = {
+  low: "DeepSeek V4 Flash · high reasoning",
+  medium: "DeepSeek V4 Flash · max reasoning",
+  high: "DeepSeek V4 Pro · high reasoning",
+  x_high: "DeepSeek V4 Pro · max reasoning",
+  auto: "Qwen 3.6 27B router on Groq · Flash fallback",
+} as const;
+
 export default function ApiReferencePage() {
   return (
     <>
@@ -51,10 +86,10 @@ export default function ApiReferencePage() {
       <main>
         <section className="pageHero">
           <p className="eyebrow">API reference</p>
-          <h1>JSON context endpoint for agents.</h1>
+          <h1>Structured JSON context for agents.</h1>
           <p className="heroText">
-            The main API accepts one context request and returns public structured JSON. It is not a
-            raw search, scrape, or provider-output endpoint.
+            The main API compiles public evidence into compact cited JSON. Raw searches, scrapes,
+            transcripts, and provider responses stay internal.
           </p>
         </section>
 
@@ -63,7 +98,7 @@ export default function ApiReferencePage() {
             <a href="#schema">Tool schema</a>
             <a href="#auth">Authentication</a>
             <a href="#pricing">Pricing</a>
-            <a href="#depth-guide">Depth guide</a>
+            <a href="#effort-guide">Effort guide</a>
             <a href="#platform-guide">Platform guide</a>
             <a href="#jobs">Async jobs</a>
             <a href="#webhooks">Webhooks</a>
@@ -78,36 +113,58 @@ export default function ApiReferencePage() {
             <h2 id="auth">Authentication</h2>
             <p>
               Send API keys with <code>Authorization: Bearer sk_sc_...</code>. Keys are scoped to a
-              workspace, can set a monthly credit limit, and can cap max depth.
+              workspace and can set a monthly credit limit and maximum resolved effort.
             </p>
             <p>
               Store keys server-side only. Do not put Supacontext keys in browser bundles, public
               mobile clients, logs, analytics events, or support screenshots.
             </p>
 
-            <h2 id="pricing">Pricing and credits</h2>
+            <h2 id="pricing">Dynamic credits and reservations</h2>
+            <p>
+              Supacontext charges actual provider operations, provider-reported model input and
+              output tokens, and Auto routing. Effort sets the research profile and spending cap.
+            </p>
+            <p>
+              Before paid work, Supacontext atomically reserves a budget within the selected
+              effort&apos;s cap and the caller&apos;s <code>max_credits</code>. The API returns
+              <code>budget_too_low</code> if <code>max_credits</code> is below the effort&apos;s
+              minimum budget, or <code>insufficient_credits</code> if the available balance cannot
+              fund that minimum. Work cannot exceed the reservation. Settlement charges actual usage
+              and releases unused credits.
+            </p>
+            <p>
+              Retrieval stops when the remaining reservation must be kept for synthesis, and the
+              response reports that gap. If safe synthesis no longer fits, the request settles
+              completed work and fails with <code>budget_exhausted</code>.
+            </p>
+
+            <h2 id="effort-guide">Effort selection guide</h2>
             <div className="rows">
-              {Object.entries(DEPTH_CREDIT_COST).map(([depth, credits]) => (
-                <div className="row" key={depth}>
-                  <span>{depth}</span>
-                  <strong>{credits} credits</strong>
+              {CONTEXT_EFFORTS.map((effort) => (
+                <div className="row" key={effort}>
+                  <span>
+                    {formatEffort(effort)} · {effortModels[effort]}
+                  </span>
+                  <strong>
+                    {EFFORT_PROFILES[effort].minimumCredits.toString()} min ·{" "}
+                    {EFFORT_PROFILES[effort].maximumCredits.toString()} max credits
+                  </strong>
                 </div>
               ))}
             </div>
-
-            <h2 id="depth-guide">Depth selection guide</h2>
             <p>
-              Use <code>fast</code> for lightweight lookups, <code>standard</code> for normal agent
-              context, <code>thorough</code> for higher confidence multi-source research, and{" "}
-              <code>deep</code> for expensive broad research. Trial workspaces cannot use deep.
+              Use Low for focused lookups, Medium for routine multi-source work, High for broad
+              cross-checking, and X High for exhaustive research. Auto routes to the least expensive
+              suitable resolved effort and records it as <code>resolved_effort</code>.
             </p>
 
             <h2 id="platform-guide">Platform selection guide</h2>
             <p>
               Supported platforms are <code>{PLATFORMS.join(", ")}</code>. Omit the array to let the
-              API use all supported platforms. Restrict platforms when an agent already knows the
-              desired source type, for example YouTube-only transcript context or Reddit-only buyer
-              sentiment.
+              agent load only relevant platform tools, or restrict it when the source type is known.
+              YouTube discovery uses API Direct while transcripts remain on Supadata; web search and
+              page retrieval remain on Exa.
             </p>
 
             <h2 id="limits">Rate limits</h2>
@@ -118,7 +175,7 @@ export default function ApiReferencePage() {
                   <strong>
                     {limits.requestsPerMinute === null
                       ? "Custom rate and concurrency limits"
-                      : `${limits.requestsPerMinute}/min - ${limits.concurrentJobs} concurrent`}
+                      : `${limits.requestsPerMinute}/min · ${limits.concurrentJobs} concurrent`}
                   </strong>
                 </div>
               ))}
@@ -126,9 +183,14 @@ export default function ApiReferencePage() {
 
             <h2 id="jobs">Async jobs</h2>
             <p>
-              Use <code>{'"async": true'}</code> for work that may take longer. The create response
-              can return <code>202</code> with an id. Poll <code>GET /v1/context/:id</code> until
-              the status is completed, failed, or cancelled.
+              Use <code>{'"async": true'}</code> for work that may take longer. A queued response
+              includes <code>id</code>, <code>status</code>, and <code>credits_reserved</code>. Poll{" "}
+              <code>GET /v1/context/:id</code> until completion, failure, or cancellation.
+            </p>
+            <p>
+              Final <code>usage</code> reports both <code>credits_charged</code> and{" "}
+              <code>credits_reserved</code>, along with effort, resolved effort, platforms, and
+              source counts.
             </p>
 
             <h2 id="webhooks">Webhooks</h2>
@@ -155,9 +217,9 @@ export default function ApiReferencePage() {
             <h2 id="env">Required environment groups</h2>
             <p>
               Configure WorkOS AuthKit, Supabase Postgres, Creem product ids and webhook secret,
-              Upstash Redis, QStash signing keys, provider keys, an internal worker token, and a 32+
-              character API key hash secret. See the repository README and <code>.env.example</code>{" "}
-              for exact variable names.
+              Upstash Redis, QStash signing keys, provider keys, the server-side GitHub token, an
+              internal worker token, and a 32+ character API key hash secret. See the repository
+              README and <code>.env.example</code> for exact names.
             </p>
           </article>
         </section>

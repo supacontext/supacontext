@@ -77,9 +77,11 @@ const upstashSchema = {
 const providerSchema = {
   EXA_API_KEY: optionalString,
   FETCHLAYER_API_KEY: optionalString,
-  XQUIK_API_KEY: optionalString,
+  API_DIRECT_API_KEY: optionalString,
+  GITHUB_TOKEN: optionalString,
   SUPADATA_API_KEY: optionalString,
   DEEPSEEK_API_KEY: optionalString,
+  GROQ_API_KEY: optionalString,
   VOYAGE_API_KEY: optionalString,
 };
 

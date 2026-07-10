@@ -19,11 +19,11 @@ export const faqs: FAQ[] = [
     shortAnswer:
       "Search APIs return links. Scrapers return raw pages. Supacontext returns structured context agents can use directly.",
     answer:
-      "Search APIs return links and snippets. Scrapers return raw pages. Supacontext turns public web, Reddit, X, and YouTube signals into structured context packs with citations, gaps, and usage metadata that agents can consume directly.",
+      "Search APIs return links and snippets. Scrapers return raw pages. Supacontext turns public web, social, news, forum, video, map, Hacker News, and GitHub signals into structured context packs with citations, gaps, and usage metadata that agents can consume directly.",
     showOnHomepage: true,
   },
   {
-    question: "Can Supacontext replace separate Web, Reddit, X, and YouTube integrations?",
+    question: "Can Supacontext replace separate platform integrations?",
     shortAnswer:
       "Yes. Use one endpoint instead of maintaining separate source connectors for every agent workflow.",
     answer:
@@ -44,9 +44,9 @@ export const faqs: FAQ[] = [
       "Yes. RAG pipelines need fresh retrieval before generation, and agents need compact evidence before tool calls. Supacontext gives both workflows current public context without forcing your team to maintain every connector.",
   },
   {
-    question: "Which depth should I choose: Fast, Standard, Thorough, or Deep?",
+    question: "Which effort should I choose?",
     answer:
-      "Use Fast for lightweight lookups, Standard for routine agent context, Thorough when accuracy matters across multiple sources, and Deep for broad research that justifies more credits and latency.",
+      "Use Low for focused lookups, Medium for routine multi-source context, High for broad cross-checking, and X High for exhaustive research. Auto routes each query to the least expensive suitable effort.",
   },
   {
     question: "Does Supacontext help reduce token usage?",
@@ -66,7 +66,7 @@ export const faqs: FAQ[] = [
   {
     question: "How does Supacontext pricing work?",
     answer:
-      "Supacontext uses credits. Each request charges based on the selected depth, and every new account includes 250 free credits so you can test real agent workflows before upgrading.",
+      "Supacontext reserves credits before paid work, charges actual provider operations and model token usage, then releases anything unused. Every effort has an internal cap, max_credits can set a lower cap per request, and every new account includes 250 free credits.",
   },
 ];
 

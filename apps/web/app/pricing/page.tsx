@@ -1,12 +1,8 @@
-import { ArrowRight, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
-import { DEPTH_CREDIT_COST, PLANS, PLAN_RATE_LIMITS, PLAN_SLUGS } from "@supacontext/core";
+import { CheckCircle2 } from "lucide-react";
+import { CONTEXT_EFFORTS, EFFORT_PROFILES } from "@supacontext/core";
+import { PricingSection } from "../../components/pricing-section";
 import { SiteHeader } from "../../components/site-header";
-import {
-  formatAnnualMonthlyPrice,
-  formatCredits,
-  formatMoney,
-} from "../../lib/usage-formatting";
+import { formatEffort } from "../../lib/usage-formatting";
 
 export default function PricingPage() {
   return (
@@ -15,105 +11,54 @@ export default function PricingPage() {
       <main>
         <section className="pageHero">
           <p className="eyebrow">Pricing</p>
-          <h1>Credits that match research depth.</h1>
+          <h1>Pay for the research your request actually uses.</h1>
           <p className="heroText">
-            Start with 250 free credits. Paid plans include monthly credit allowances, and annual
-            billing saves the cost of two months.
+            Start with 250 free credits. Credits cover provider operations, model input and output
+            tokens, and Auto routing. Effort controls the research profile and safety cap; actual
+            usage determines the charge.
           </p>
         </section>
 
-        <section className="pricingGrid" aria-label="Plans">
-          {PLAN_SLUGS.map((slug) => {
-            const plan = PLANS[slug];
-            const limits = PLAN_RATE_LIMITS[slug];
-            const isEnterprise = slug === "enterprise";
-
-            return (
-              <article className="card pricingCard" key={slug}>
-                <div>
-                  <p className="planName">{plan.name}</p>
-                  <div className="priceLine">
-                    <strong>
-                      {plan.priceCents === null ? "Custom" : formatMoney(plan.priceCents)}
-                    </strong>
-                    <span>
-                      {plan.billingInterval === "month"
-                        ? "/mo"
-                        : plan.billingInterval === "one_time"
-                          ? "one-time"
-                          : null}
-                    </span>
-                  </div>
-                  {plan.annualPriceCents !== null ? (
-                    <p className="mutedText">
-                      {formatAnnualMonthlyPrice(plan.annualPriceCents)}/mo billed yearly (
-                      {formatMoney(plan.annualPriceCents)}/year)
-                    </p>
-                  ) : null}
-                  <p className="mutedText">
-                    {plan.includedCredits === null
-                      ? "Custom credits"
-                      : formatCredits(plan.includedCredits)}
-                  </p>
-                </div>
-                <div className="rows compactRows">
-                  <div className="row">
-                    <span>Requests</span>
-                    <strong>
-                      {limits.requestsPerMinute === null
-                        ? "Custom"
-                        : `${limits.requestsPerMinute}/min`}
-                    </strong>
-                  </div>
-                  <div className="row">
-                    <span>Concurrent</span>
-                    <strong>
-                      {limits.concurrentJobs === null ? "Custom" : limits.concurrentJobs}
-                    </strong>
-                  </div>
-                  <div className="row">
-                    <span>Deep</span>
-                    <strong>{plan.deepAllowed ? "Included" : "Not included"}</strong>
-                  </div>
-                </div>
-                <Link
-                  className="button fullButton primaryButton"
-                  href={isEnterprise ? "mailto:sales@supacontext.com" : "/dashboard"}
-                >
-                  {isEnterprise ? "Contact Sales" : `Choose ${plan.name}`}
-                  <ArrowRight aria-hidden="true" size={16} />
-                </Link>
-              </article>
-            );
-          })}
-        </section>
+        <PricingSection />
 
         <section className="section twoColumn">
           <article className="card">
-            <h2>Depth costs</h2>
+            <h2>Effort caps</h2>
+            <p className="mutedText">
+              Actual charges vary with work performed. Pass <code>max_credits</code> to set a lower
+              cap for one request.
+            </p>
             <div className="rows">
-              {Object.entries(DEPTH_CREDIT_COST).map(([depth, credits]) => (
-                <div className="row" key={depth}>
-                  <span>{depth}</span>
-                  <strong>{credits} credits</strong>
+              {CONTEXT_EFFORTS.map((effort) => (
+                <div className="row" key={effort}>
+                  <span>{formatEffort(effort)}</span>
+                  <strong>{EFFORT_PROFILES[effort].maximumCredits.toString()} credits max</strong>
                 </div>
               ))}
             </div>
           </article>
           <article className="card">
-            <h2>Plan notes</h2>
+            <h2>How charging works</h2>
             <ul className="checkList">
               <li>
                 <CheckCircle2 aria-hidden="true" size={18} />
-                Free includes 250 one-time credits and does not allow Deep.
+                Supacontext reserves credits before paid work begins.
               </li>
               <li>
                 <CheckCircle2 aria-hidden="true" size={18} />
-                Paid plans include Deep with plan-specific concurrency limits.
+                The pricing registry charges provider calls and reported model tokens.
+              </li>
+              <li>
+                <CheckCircle2 aria-hidden="true" size={18} />
+                Settlement releases the unused reservation.
               </li>
               <li>
                 <CheckCircle2 aria-hidden="true" size={18} />
                 Annual billing costs the same as ten monthly payments.
+              </li>
+              <li>
+                <CheckCircle2 aria-hidden="true" size={18} />
+                Monthly plan credits expire at renewal.
               </li>
             </ul>
           </article>

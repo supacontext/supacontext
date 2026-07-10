@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest";
 import { parseApiKeyForm } from "../api-key-form";
 
 describe("parseApiKeyForm", () => {
-  it("defaults monthly credit limit to unlimited and max depth can be deep", () => {
+  it("defaults monthly credit limit to unlimited and accepts x-high effort", () => {
     expect(
       parseApiKeyForm({
         name: "Production",
         monthlyCreditLimit: "",
-        maxDepth: "deep",
+        maxEffort: "x_high",
       }),
     ).toEqual({
       ok: true,
       value: {
         name: "Production",
         monthlyCreditLimit: null,
-        maxDepth: "deep",
+        maxEffort: "x_high",
       },
     });
   });
@@ -24,14 +24,14 @@ describe("parseApiKeyForm", () => {
       parseApiKeyForm({
         name: "CI",
         monthlyCreditLimit: "1500",
-        maxDepth: "standard",
+        maxEffort: "medium",
       }),
     ).toEqual({
       ok: true,
       value: {
         name: "CI",
         monthlyCreditLimit: 1500,
-        maxDepth: "standard",
+        maxEffort: "medium",
       },
     });
   });
@@ -40,14 +40,27 @@ describe("parseApiKeyForm", () => {
     const result = parseApiKeyForm({
       name: " ",
       monthlyCreditLimit: "12.5",
-      maxDepth: "expensive",
+      maxEffort: "auto",
     });
 
     expect(result.ok).toBe(false);
     expect(result.ok ? [] : result.errors.map((error) => error.field)).toEqual([
       "name",
       "monthlyCreditLimit",
-      "maxDepth",
+      "maxEffort",
     ]);
+  });
+
+  it("rejects monthly limits that cannot be represented exactly", () => {
+    const result = parseApiKeyForm({
+      name: "Unsafe limit",
+      monthlyCreditLimit: "9007199254740992",
+      maxEffort: "high",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ field: "monthlyCreditLimit" }],
+    });
   });
 });

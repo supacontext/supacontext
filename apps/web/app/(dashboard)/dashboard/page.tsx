@@ -8,12 +8,12 @@ import {
   listRecentRequests,
   requireWorkspaceContext,
 } from "../../../lib/server/dashboard";
-import { formatCredits, formatDateTime } from "../../../lib/usage-formatting";
+import { formatCredits, formatDateTime, formatEffort } from "../../../lib/usage-formatting";
 
 const quickstart = `curl -X POST "$SUPACONTEXT_API_URL/v1/context" \\
   -H "Authorization: Bearer $SUPACONTEXT_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"query":"What changed in AI agent tooling this week?","depth":"standard"}'`;
+  -d '{"query":"What changed in AI agent tooling this week?","effort":"auto","max_credits":50}'`;
 
 export default async function DashboardPage() {
   const workspace = await requireWorkspaceContext();
@@ -131,7 +131,7 @@ export default async function DashboardPage() {
               {recentRequests.map((request) => (
                 <div className="tableRow" key={request.id}>
                   <span>{request.query}</span>
-                  <span>{request.depth}</span>
+                  <span>{formatEffort(request.effort)}</span>
                   <span>{request.status}</span>
                   <strong>{formatCredits(request.creditsCharged)}</strong>
                 </div>

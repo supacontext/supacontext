@@ -1,86 +1,133 @@
 import {
-  CONTEXT_DEPTHS,
-  getDepthCreditCost,
-  isDepthAllowedForPlan,
-  type ContextDepth,
-  type PlanSlug,
+  EFFORT_PROFILES,
+  RESOLVED_EFFORTS,
+  type ContextEffort,
+  type ResolvedEffort,
 } from "@supacontext/core";
 
 export type UsageAuthorizationInput = {
-  plan: PlanSlug;
-  depth: ContextDepth;
-  balance: number;
-  apiKeyMaxDepth?: ContextDepth;
-  monthlyCreditLimit?: number | null;
-  monthToDateCredits?: number;
+  effort: ContextEffort;
+  balanceCreditMicros: bigint;
+  callerMaxCreditMicros?: bigint | null;
+  apiKeyMaxEffort?: ResolvedEffort;
+  monthlyCreditLimitMicros?: bigint | null;
+  monthToDateCreditMicros?: bigint;
 };
+
+export type UsageDenialReason =
+  "api_key_effort_restricted" | "caller_cap" | "monthly_limit" | "credits";
 
 export type UsageAuthorizationResult =
   | {
       allowed: true;
-      requiredCredits: number;
+      reservationCreditMicros: bigint;
+      minimumCreditMicros: bigint;
+      effortCapCreditMicros: bigint;
     }
   | {
       allowed: false;
-      requiredCredits: number;
-      reason: "plan_depth_restricted" | "api_key_depth_restricted" | "monthly_limit" | "credits";
+      reason: UsageDenialReason;
+      effectiveReservationCreditMicros: bigint;
+      minimumCreditMicros: bigint;
+      effortCapCreditMicros: bigint;
     };
 
-const depthRank = Object.fromEntries(
-  CONTEXT_DEPTHS.map((depth, index) => [depth, index]),
-) as Record<ContextDepth, number>;
+const effortRank = Object.fromEntries(
+  RESOLVED_EFFORTS.map((effort, index) => [effort, index]),
+) as Record<ResolvedEffort, number>;
 
-export function getDepthRank(depth: ContextDepth): number {
-  const rank = depthRank[depth];
+export function getEffortRank(effort: ResolvedEffort): number {
+  const rank = effortRank[effort];
 
   if (rank === undefined) {
-    throw new Error(`Unknown context depth: ${depth}`);
+    throw new Error(`Unknown resolved effort: ${effort}`);
   }
 
   return rank;
 }
 
+function assertCreditMicros(value: bigint, name: string): void {
+  if (typeof value !== "bigint" || value < 0n) {
+    throw new Error(`${name} must be a non-negative bigint in credit microcredits.`);
+  }
+}
+
+function optionalCreditMicros(value: bigint | null | undefined, name: string): bigint | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  assertCreditMicros(value, name);
+  return value;
+}
+
+function effortCapForApiKey(input: UsageAuthorizationInput): bigint {
+  const requestedCap = EFFORT_PROFILES[input.effort].maximumCreditMicros;
+
+  if (input.effort !== "auto" || !input.apiKeyMaxEffort) {
+    return requestedCap;
+  }
+
+  const apiKeyCap = EFFORT_PROFILES[input.apiKeyMaxEffort].maximumCreditMicros;
+  return requestedCap < apiKeyCap ? requestedCap : apiKeyCap;
+}
+
 export function authorizeUsage(input: UsageAuthorizationInput): UsageAuthorizationResult {
-  const requiredCredits = getDepthCreditCost(input.depth);
+  assertCreditMicros(input.balanceCreditMicros, "Credit balance");
+  const callerMax = optionalCreditMicros(input.callerMaxCreditMicros, "Caller credit cap");
+  const monthlyLimit = optionalCreditMicros(input.monthlyCreditLimitMicros, "Monthly credit limit");
+  const monthToDate = input.monthToDateCreditMicros ?? 0n;
+  assertCreditMicros(monthToDate, "Month-to-date credits");
 
-  if (!isDepthAllowedForPlan(input.plan, input.depth)) {
-    return {
-      allowed: false,
-      requiredCredits,
-      reason: "plan_depth_restricted",
-    };
-  }
-
-  if (input.apiKeyMaxDepth && getDepthRank(input.depth) > getDepthRank(input.apiKeyMaxDepth)) {
-    return {
-      allowed: false,
-      requiredCredits,
-      reason: "api_key_depth_restricted",
-    };
-  }
+  const profile = EFFORT_PROFILES[input.effort];
+  const minimumCreditMicros = profile.minimumCreditMicros;
+  const effortCapCreditMicros = effortCapForApiKey(input);
 
   if (
-    input.monthlyCreditLimit !== undefined &&
-    input.monthlyCreditLimit !== null &&
-    (input.monthToDateCredits ?? 0) + requiredCredits > input.monthlyCreditLimit
+    input.effort !== "auto" &&
+    input.apiKeyMaxEffort &&
+    getEffortRank(input.effort) > getEffortRank(input.apiKeyMaxEffort)
   ) {
     return {
       allowed: false,
-      requiredCredits,
-      reason: "monthly_limit",
+      reason: "api_key_effort_restricted",
+      effectiveReservationCreditMicros: 0n,
+      minimumCreditMicros,
+      effortCapCreditMicros,
     };
   }
 
-  if (input.balance < requiredCredits) {
+  const monthlyRemaining =
+    monthlyLimit === null ? null : monthlyLimit > monthToDate ? monthlyLimit - monthToDate : 0n;
+  const caps: Array<{
+    value: bigint;
+    reason: Exclude<UsageDenialReason, "api_key_effort_restricted"> | null;
+  }> = [
+    { value: effortCapCreditMicros, reason: null },
+    ...(callerMax === null ? [] : [{ value: callerMax, reason: "caller_cap" as const }]),
+    ...(monthlyRemaining === null
+      ? []
+      : [{ value: monthlyRemaining, reason: "monthly_limit" as const }]),
+    { value: input.balanceCreditMicros, reason: "credits" },
+  ];
+  const limitingCap = caps.reduce((lowest, candidate) =>
+    candidate.value < lowest.value ? candidate : lowest,
+  );
+
+  if (limitingCap.value < minimumCreditMicros) {
     return {
       allowed: false,
-      requiredCredits,
-      reason: "credits",
+      reason: limitingCap.reason ?? "credits",
+      effectiveReservationCreditMicros: limitingCap.value,
+      minimumCreditMicros,
+      effortCapCreditMicros,
     };
   }
 
   return {
     allowed: true,
-    requiredCredits,
+    reservationCreditMicros: limitingCap.value,
+    minimumCreditMicros,
+    effortCapCreditMicros,
   };
 }

@@ -1,11 +1,41 @@
 create extension if not exists pgcrypto;
 
-create type public.context_depth as enum ('fast', 'standard', 'thorough', 'deep');
-create type public.platform as enum ('web', 'reddit', 'x', 'youtube');
+create type public.context_effort as enum ('low', 'medium', 'high', 'x_high', 'auto');
+create type public.platform as enum (
+  'web',
+  'reddit',
+  'x',
+  'youtube',
+  'facebook',
+  'news',
+  'forums',
+  'places',
+  'linkedin',
+  'hackernews',
+  'github'
+);
 create type public.request_status as enum ('queued', 'running', 'completed', 'failed', 'cancelled');
 create type public.plan_slug as enum ('free', 'starter', 'pro', 'growth', 'scale', 'enterprise');
-create type public.provider as enum ('exa', 'fetchlayer', 'xquik', 'supadata', 'deepseek', 'voyage');
-create type public.ledger_event_type as enum ('grant', 'debit', 'refund', 'adjustment', 'expiration');
+create type public.provider as enum (
+  'exa',
+  'fetchlayer',
+  'api_direct',
+  'supadata',
+  'deepseek',
+  'groq',
+  'voyage',
+  'hacker_news_firebase',
+  'hacker_news_algolia',
+  'github'
+);
+create type public.ledger_event_type as enum (
+  'grant',
+  'reservation',
+  'release',
+  'adjustment',
+  'expiration'
+);
+create type public.cost_event_status as enum ('pending', 'settled', 'released', 'uncertain');
 create type public.subscription_status as enum ('trialing', 'active', 'past_due', 'cancelled', 'expired');
 
 create or replace function public.set_updated_at()
@@ -50,7 +80,6 @@ create table public.plans (
   price_cents integer check (price_cents >= 0),
   annual_price_cents integer check (annual_price_cents >= 0),
   included_credits integer check (included_credits >= 0),
-  deep_allowed boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -65,24 +94,22 @@ insert into public.plans (
   billing_interval,
   price_cents,
   annual_price_cents,
-  included_credits,
-  deep_allowed
+  included_credits
 )
 values
-  ('free', 'Free', 'one_time', 0, null, 250, false),
-  ('starter', 'Starter', 'month', 1900, 19000, 5000, true),
-  ('pro', 'Pro', 'month', 7900, 79000, 25000, true),
-  ('growth', 'Growth', 'month', 19900, 199000, 75000, true),
-  ('scale', 'Scale', 'month', 49900, 499000, 200000, true),
-  ('enterprise', 'Enterprise', 'custom', null, null, null, true)
+  ('free', 'Free', 'one_time', 0, null, 250),
+  ('starter', 'Starter', 'month', 1900, 19000, 5000),
+  ('pro', 'Pro', 'month', 7900, 79000, 25000),
+  ('growth', 'Growth', 'month', 19900, 199000, 75000),
+  ('scale', 'Scale', 'month', 49900, 499000, 200000),
+  ('enterprise', 'Enterprise', 'custom', null, null, null)
 on conflict (slug) do update
 set
   name = excluded.name,
   billing_interval = excluded.billing_interval,
   price_cents = excluded.price_cents,
   annual_price_cents = excluded.annual_price_cents,
-  included_credits = excluded.included_credits,
-  deep_allowed = excluded.deep_allowed;
+  included_credits = excluded.included_credits;
 
 create table public.subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -107,7 +134,7 @@ for each row execute function public.set_updated_at();
 
 create table public.credit_balances (
   workspace_id uuid primary key references public.workspaces(id) on delete cascade,
-  balance integer not null default 0 check (balance >= 0),
+  balance_microcredits bigint not null default 0 check (balance_microcredits >= 0),
   updated_at timestamptz not null default now()
 );
 
@@ -118,9 +145,11 @@ create table public.api_keys (
   name text not null,
   key_hash text not null unique,
   prefix text not null,
-  max_depth public.context_depth not null default 'deep',
-  monthly_credit_limit integer check (monthly_credit_limit is null or monthly_credit_limit >= 0),
-  month_to_date_credits integer not null default 0 check (month_to_date_credits >= 0),
+  max_effort public.context_effort not null default 'x_high' check (max_effort <> 'auto'),
+  monthly_credit_limit_microcredits bigint check (
+    monthly_credit_limit_microcredits is null or monthly_credit_limit_microcredits >= 0
+  ),
+  month_to_date_microcredits bigint not null default 0 check (month_to_date_microcredits >= 0),
   last_used_at timestamptz,
   revoked_at timestamptz,
   created_at timestamptz not null default now(),
@@ -140,12 +169,17 @@ create table public.context_requests (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   api_key_id uuid references public.api_keys(id) on delete set null,
   query text not null,
-  depth public.context_depth not null,
+  effort public.context_effort not null,
+  resolved_effort public.context_effort check (resolved_effort is null or resolved_effort <> 'auto'),
+  max_resolved_effort public.context_effort not null check (max_resolved_effort <> 'auto'),
   platforms public.platform[] not null,
   platform_mode text not null default 'auto' check (platform_mode in ('auto', 'manual')),
   status public.request_status not null default 'queued',
-  requested_credits integer not null check (requested_credits > 0),
-  spent_credits integer not null default 0 check (spent_credits >= 0),
+  caller_max_microcredits bigint check (caller_max_microcredits is null or caller_max_microcredits > 0),
+  effective_cap_microcredits bigint not null check (effective_cap_microcredits > 0),
+  reserved_microcredits bigint not null check (reserved_microcredits >= 0),
+  spent_microcredits bigint not null default 0 check (spent_microcredits >= 0),
+  pricing_version text not null,
   idempotency_key text,
   idempotency_request_hash text,
   webhook_url text,
@@ -155,9 +189,14 @@ create table public.context_requests (
   error_message text,
   started_at timestamptz,
   completed_at timestamptz,
+  settled_at timestamptz,
+  lease_expires_at timestamptz,
+  claim_attempts integer not null default 0 check (claim_attempts >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  check (cardinality(platforms) between 1 and 4)
+  check (cardinality(platforms) between 1 and 11),
+  check (spent_microcredits <= effective_cap_microcredits),
+  check (reserved_microcredits + spent_microcredits <= effective_cap_microcredits)
 );
 
 create unique index context_requests_workspace_idempotency_key_idx
@@ -197,11 +236,16 @@ create table public.usage_ledger (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   event_type public.ledger_event_type not null,
-  credits integer not null check (credits <> 0),
+  credit_microcredits bigint not null check (credit_microcredits <> 0),
   context_request_id text references public.context_requests(id) on delete set null,
   idempotency_key text,
   metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (
+    (event_type in ('grant', 'release') and credit_microcredits > 0) or
+    (event_type in ('reservation', 'expiration') and credit_microcredits < 0) or
+    event_type = 'adjustment'
+  )
 );
 
 create unique index usage_ledger_workspace_idempotency_key_idx
@@ -216,11 +260,11 @@ returns trigger
 language plpgsql
 as $$
 begin
-  insert into public.credit_balances (workspace_id, balance, updated_at)
-  values (new.workspace_id, new.credits, now())
+  insert into public.credit_balances (workspace_id, balance_microcredits, updated_at)
+  values (new.workspace_id, new.credit_microcredits, now())
   on conflict (workspace_id) do update
   set
-    balance = public.credit_balances.balance + excluded.balance,
+    balance_microcredits = public.credit_balances.balance_microcredits + excluded.balance_microcredits,
     updated_at = now();
 
   return new;
@@ -231,19 +275,69 @@ create trigger usage_ledger_apply_to_balance
 after insert on public.usage_ledger
 for each row execute function public.apply_usage_ledger_to_balance();
 
+create table public.context_cost_events (
+  id text primary key,
+  context_request_id text not null references public.context_requests(id) on delete cascade,
+  provider public.provider not null,
+  platform public.platform,
+  operation text not null,
+  status public.cost_event_status not null default 'pending',
+  reserved_microcredits bigint not null check (reserved_microcredits > 0),
+  actual_microcredits bigint check (
+    actual_microcredits is null or
+    (actual_microcredits >= 0 and actual_microcredits <= reserved_microcredits)
+  ),
+  upstream_cost_usd_nanos bigint check (
+    upstream_cost_usd_nanos is null or upstream_cost_usd_nanos >= 0
+  ),
+  billable_units bigint check (billable_units is null or billable_units >= 0),
+  input_tokens integer check (input_tokens is null or input_tokens >= 0),
+  cached_input_tokens integer check (
+    cached_input_tokens is null or cached_input_tokens >= 0
+  ),
+  output_tokens integer check (output_tokens is null or output_tokens >= 0),
+  model text,
+  pricing_version text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  settled_at timestamptz,
+  check (
+    cached_input_tokens is null or
+    (input_tokens is not null and cached_input_tokens <= input_tokens)
+  )
+);
+
+create index context_cost_events_request_id_idx
+on public.context_cost_events(context_request_id);
+
 create table public.provider_call_logs (
   id uuid primary key default gen_random_uuid(),
   context_request_id text references public.context_requests(id) on delete set null,
   provider public.provider not null,
   platform public.platform,
+  operation text not null,
+  attempt integer not null default 1 check (attempt > 0),
   status_code integer,
   duration_ms integer check (duration_ms is null or duration_ms >= 0),
-  cost_cents integer check (cost_cents is null or cost_cents >= 0),
+  billable_units bigint check (billable_units is null or billable_units >= 0),
+  upstream_cost_usd_nanos bigint check (
+    upstream_cost_usd_nanos is null or upstream_cost_usd_nanos >= 0
+  ),
+  charged_microcredits bigint check (charged_microcredits is null or charged_microcredits >= 0),
   input_tokens integer check (input_tokens is null or input_tokens >= 0),
+  cached_input_tokens integer check (
+    cached_input_tokens is null or cached_input_tokens >= 0
+  ),
   output_tokens integer check (output_tokens is null or output_tokens >= 0),
+  model text,
+  pricing_version text not null,
   error_code text,
   error_message text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (
+    cached_input_tokens is null or
+    (input_tokens is not null and cached_input_tokens <= input_tokens)
+  )
 );
 
 comment on table public.provider_call_logs is
@@ -278,5 +372,6 @@ alter table public.context_requests enable row level security;
 alter table public.context_request_events enable row level security;
 alter table public.context_results enable row level security;
 alter table public.usage_ledger enable row level security;
+alter table public.context_cost_events enable row level security;
 alter table public.provider_call_logs enable row level security;
 alter table public.webhooks enable row level security;

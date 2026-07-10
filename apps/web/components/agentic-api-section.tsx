@@ -1,4 +1,4 @@
-const depthLevels = ["Fast", "Standard", "Thorough", "Deep"];
+const effortLevels = ["Low", "Medium", "High", "X High", "Auto"];
 
 export function AgenticApiSection() {
   return (
@@ -6,7 +6,7 @@ export function AgenticApiSection() {
       <div className="agenticIntro">
         <h2 id="agentic-api-title">A research agent behind every request.</h2>
         <p>
-          Supacontext searches 14+ public sources, compares signals, and returns compact cited JSON
+          Supacontext searches 11 public platforms, compares signals, and returns compact cited JSON
           your agent can use.
         </p>
       </div>
@@ -21,7 +21,7 @@ export function AgenticApiSection() {
         <div className="agenticMapNode agenticMapCore">
           <span>Supacontext agent</span>
           <strong>Searches and compares</strong>
-          <p>14+ public sources</p>
+          <p>11 public platforms</p>
         </div>
 
         <div className="agenticMapNode agenticMapEdgeNode">
@@ -31,14 +31,14 @@ export function AgenticApiSection() {
         </div>
       </div>
 
-      <div className="agenticDepthRow" aria-label="Available research depth levels">
-        {depthLevels.map((level) => (
-          <span className={level === "Standard" ? "active" : undefined} key={level}>
+      <div className="agenticEffortRow" aria-label="Available research effort levels">
+        {effortLevels.map((level) => (
+          <span className={level === "Auto" ? "active" : undefined} key={level}>
             {level}
           </span>
         ))}
       </div>
-      <p className="agenticDepthCaption">Choose a depth level for each request.</p>
+      <p className="agenticEffortCaption">Choose an effort or let Auto route the request.</p>
     </section>
   );
 }
