@@ -388,7 +388,7 @@ async function ensureWorkspaceForUser(input: {
         ${workspaceId},
         'grant'::ledger_event_type,
         ${PLANS.free.includedCredits},
-        ${`free-grant:${workspaceId}`},
+        ${`trial-grant:${workspaceId}`},
         ${transaction.json({ plan: "free", source: "dashboard_signup" })}
       )
       on conflict (workspace_id, idempotency_key)

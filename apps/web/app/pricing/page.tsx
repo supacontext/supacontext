@@ -2,11 +2,11 @@ import { ArrowRight, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { DEPTH_CREDIT_COST, PLANS, PLAN_RATE_LIMITS, PLAN_SLUGS } from "@supacontext/core";
 import { SiteHeader } from "../../components/site-header";
-import { formatCredits, formatMoney } from "../../lib/usage-formatting";
-
-function formatAnnualMonthlyPrice(annualPriceCents: number): string {
-  return formatMoney(Math.round(annualPriceCents / 1200) * 100);
-}
+import {
+  formatAnnualMonthlyPrice,
+  formatCredits,
+  formatMoney,
+} from "../../lib/usage-formatting";
 
 export default function PricingPage() {
   return (

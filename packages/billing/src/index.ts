@@ -241,7 +241,12 @@ function planFromValue(value: string | null): PaidPlanSlug | null {
 }
 
 function billingIntervalFromValue(value: string | null): PaidBillingInterval | null {
-  return value === "month" || value === "year" ? value : null;
+  const normalized =
+    value === "every-month" ? "month" : value === "every-year" ? "year" : value;
+
+  return PAID_BILLING_INTERVALS.includes(normalized as PaidBillingInterval)
+    ? (normalized as PaidBillingInterval)
+    : null;
 }
 
 function metadataFrom(data: Record<string, unknown>): Record<string, unknown> {
@@ -285,7 +290,15 @@ function normalizeCreemEvent(
     null;
   const billingInterval =
     billingIntervalFromValue(
-      firstString(metadata.billing_interval, metadata.billingInterval, data.billing_interval),
+      firstString(
+        metadata.billing_interval,
+        metadata.billingInterval,
+        metadata.billing_period,
+        metadata.billingPeriod,
+        data.billing_interval,
+        data.billing_period,
+        data.billingPeriod,
+      ),
     ) ??
     product?.billingInterval ??
     null;

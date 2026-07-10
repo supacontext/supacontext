@@ -16,6 +16,10 @@ export function formatMoney(cents: number): string {
   }).format(cents / 100);
 }
 
+export function formatAnnualMonthlyPrice(annualPriceCents: number): string {
+  return formatMoney(Math.round(annualPriceCents / 1200) * 100);
+}
+
 export function formatDateTime(value: Date | string | null | undefined): string {
   if (!value) {
     return "Not available";

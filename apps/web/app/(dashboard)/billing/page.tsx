@@ -1,6 +1,11 @@
 import { PLANS, SELF_SERVE_PAID_PLAN_SLUGS } from "@supacontext/core";
 import { getPlanState, requireWorkspaceContext } from "../../../lib/server/dashboard";
-import { formatCredits, formatDateTime, formatMoney } from "../../../lib/usage-formatting";
+import {
+  formatAnnualMonthlyPrice,
+  formatCredits,
+  formatDateTime,
+  formatMoney,
+} from "../../../lib/usage-formatting";
 import { BillingActionButton, ManageBillingButton } from "./billing-actions";
 
 function formatCurrentPrice(
@@ -17,10 +22,6 @@ function formatCurrentPrice(
   }
 
   return monthlyPriceCents === 0 ? "$0" : `${formatMoney(monthlyPriceCents)}/month`;
-}
-
-function formatAnnualMonthlyPrice(annualPriceCents: number): string {
-  return formatMoney(Math.round(annualPriceCents / 1200) * 100);
 }
 
 export default async function BillingPage() {

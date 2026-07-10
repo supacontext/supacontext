@@ -182,6 +182,7 @@ Creem checkout is created from the dashboard billing page. The checkout metadata
 
 - `workspace_id`
 - `plan`
+- `billing_interval`
 
 Configure the Creem webhook endpoint:
 

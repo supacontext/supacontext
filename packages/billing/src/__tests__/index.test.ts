@@ -39,7 +39,12 @@ describe("Creem billing adapter", () => {
   it("grants the advertised monthly credits for monthly and annual billing", () => {
     expect(paidPlanCredits("starter", "month")).toBe(5_000);
     expect(paidPlanCredits("starter", "year")).toBe(60_000);
+    expect(paidPlanCredits("pro", "month")).toBe(25_000);
+    expect(paidPlanCredits("pro", "year")).toBe(300_000);
     expect(paidPlanCredits("growth", "month")).toBe(75_000);
+    expect(paidPlanCredits("growth", "year")).toBe(900_000);
+    expect(paidPlanCredits("scale", "month")).toBe(200_000);
+    expect(paidPlanCredits("scale", "year")).toBe(2_400_000);
   });
 
   it("verifies webhook signatures with timing-safe HMAC comparison", () => {
@@ -79,6 +84,25 @@ describe("Creem billing adapter", () => {
       customerId: "cus_1",
       subscriptionId: "sub_1",
       status: "active",
+    });
+  });
+
+  it.each([
+    ["every-month", "month"],
+    ["every-year", "year"],
+  ] as const)("normalizes the documented %s billing period", async (billingPeriod, expected) => {
+    const payload = webhookPayload("subscription.paid", {
+      id: "sub_1",
+      last_transaction_id: "tran_1",
+      billing_period: billingPeriod,
+      metadata: {
+        workspace_id: "workspace_1",
+        plan: "pro",
+      },
+    });
+
+    await expect(createClient().parseWebhook(payload, sign(payload))).resolves.toMatchObject({
+      billingInterval: expected,
     });
   });
 
