@@ -49,6 +49,7 @@ const workosSchema = {
   WORKOS_CLIENT_ID: requiredString,
   WORKOS_API_KEY: requiredString,
   WORKOS_COOKIE_PASSWORD: requiredString.min(32, "must be at least 32 characters"),
+  WORKOS_AUTHKIT_DOMAIN: optionalUrl,
   NEXT_PUBLIC_WORKOS_REDIRECT_URI: requiredUrl,
 };
 

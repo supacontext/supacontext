@@ -1,0 +1,30 @@
+{
+  "name": "@supacontext/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "supacontext": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/bin.ts",
+    "lint": "eslint . --max-warnings 0",
+    "predev": "pnpm --filter @supacontext/sdk build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supacontext/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@supacontext/eslint-config": "workspace:*",
+    "@supacontext/tsconfig": "workspace:*"
+  }
+}

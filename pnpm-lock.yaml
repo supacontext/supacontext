@@ -99,6 +99,9 @@ importers:
       '@workos-inc/node':
         specifier: ^10.7.0
         version: 10.7.0
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       lucide-react:
         specifier: ^1.23.0
         version: 1.23.0(react@19.2.7)
@@ -183,6 +186,19 @@ importers:
       '@supacontext/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@supacontext/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@supacontext/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+
+  packages/cli:
+    dependencies:
+      '@supacontext/sdk':
+        specifier: workspace:*
+        version: link:../sdk
     devDependencies:
       '@supacontext/eslint-config':
         specifier: workspace:*

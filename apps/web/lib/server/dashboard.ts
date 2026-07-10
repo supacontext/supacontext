@@ -495,6 +495,10 @@ export async function getWorkspaceContext(): Promise<WorkspaceContext | null> {
     return null;
   }
 
+  return getWorkspaceContextForUser(user);
+}
+
+export async function getWorkspaceContextForUser(user: User): Promise<WorkspaceContext> {
   return ensureWorkspaceForUser({
     workosUserId: user.id,
     email: emailFromUser(user),

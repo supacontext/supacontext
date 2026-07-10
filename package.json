@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "cli": "pnpm --filter @supacontext/cli dev",
     "dev": "node scripts/with-root-env.mjs turbo dev",
     "build": "node scripts/with-root-env.mjs turbo build",
     "lint": "node scripts/with-root-env.mjs turbo lint",
