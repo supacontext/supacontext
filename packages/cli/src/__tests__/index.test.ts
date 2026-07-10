@@ -457,6 +457,88 @@ describe("Supacontext CLI", () => {
     expect(JSON.parse(dependencies.stdout.value)).toEqual(responseBody);
   });
 
+  it("lets agents explicitly choose synchronous or asynchronous execution", async () => {
+    const dependencies = await testDependencies(`${apiKey}\n`);
+
+    await runCli(["auth", "set-key", "--json"], dependencies);
+    dependencies.stdout.value = "";
+
+    const requestBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+
+      requestBodies.push(body);
+      return body.async
+        ? Response.json({ id: "ctx_async", status: "queued", credits_reserved: 5 })
+        : Response.json({
+            id: "ctx_sync",
+            query: body.query,
+            effort: "medium",
+            status: "completed",
+            answer: "Done",
+            context_pack: [],
+            sources: [],
+            gaps: [],
+            usage: {
+              credits_charged: 1,
+              credits_reserved: 0,
+              effort: "medium",
+              platforms_used: [],
+              sources_considered: 0,
+              sources_used: 0,
+              cached: false,
+            },
+          });
+    }) as unknown as typeof fetch;
+
+    await runCli(["context", "create", "sync query", "--sync", "--json"], {
+      ...dependencies,
+      stdin: Readable.from([]),
+      fetch: fetchMock,
+    });
+    await runCli(["context", "create", "async query", "--async", "--json"], {
+      ...dependencies,
+      stdin: Readable.from([]),
+      fetch: fetchMock,
+    });
+
+    expect(requestBodies).toEqual([
+      { query: "sync query", async: false },
+      { query: "async query", async: true },
+    ]);
+    expect(
+      dependencies.stdout.value
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toMatchObject([
+      { id: "ctx_sync", status: "completed" },
+      { id: "ctx_async", status: "queued" },
+    ]);
+  });
+
+  it("rejects contradictory execution modes before making a request", async () => {
+    const dependencies = await testDependencies(`${apiKey}\n`);
+    const fetchMock = vi.fn();
+
+    await runCli(["auth", "set-key", "--json"], dependencies);
+
+    for (const flags of [
+      ["--sync", "--async"],
+      ["--sync", "--wait"],
+    ]) {
+      await expect(
+        runCli(["context", "create", "agent context", ...flags], {
+          ...dependencies,
+          stdin: Readable.from([]),
+          fetch: fetchMock as unknown as typeof fetch,
+        }),
+      ).rejects.toMatchObject({ code: "CONFLICTING_OPTIONS" });
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects non-HTTPS webhook URLs before making a request", async () => {
     const dependencies = await testDependencies(`${apiKey}\n`);
     const fetchMock = vi.fn();

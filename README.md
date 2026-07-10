@@ -140,12 +140,16 @@ pnpm cli profile use agent
 Context commands always return the API's structured JSON. `--json` selects compact JSON suitable
 for agent parsing; without it, the same response is pretty-printed. In JSON mode, browser-login
 progress and the verification URL go to stderr so stdout remains one parseable JSON document.
+Agents can choose `--sync` to run inline and receive the completed result, or `--async` to queue
+the run and immediately receive its request ID. Synchronous execution is the default when neither
+flag is present. `--wait` queues an asynchronous run and polls it to completion in the CLI.
 
 ```bash
 pnpm cli context create "What changed in agent tooling this week?" \
   --depth auto \
   --source web,reddit,github \
   --max-credits 50 \
+  --sync \
   --json
 
 pnpm cli context create "Summarize current discussions" \

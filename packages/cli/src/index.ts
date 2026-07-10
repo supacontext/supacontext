@@ -421,6 +421,7 @@ async function createContext(args: string[], dependencies: CliDependencies): Pro
     platform: { type: "string", multiple: true },
     source: { type: "string", multiple: true },
     "max-credits": { type: "string" },
+    sync: { type: "boolean" },
     async: { type: "boolean" },
     wait: { type: "boolean" },
     "webhook-url": { type: "string" },
@@ -442,6 +443,7 @@ async function createContext(args: string[], dependencies: CliDependencies): Pro
     ...stringValues(values.platform),
     ...stringValues(values.source),
   ]);
+  const execution = resolveExecution(values.sync, values.async, values.wait);
   const input: ContextCreateInput = {
     query,
     ...(effort ? { effort } : {}),
@@ -449,7 +451,7 @@ async function createContext(args: string[], dependencies: CliDependencies): Pro
       ? { max_credits: positiveNumber(values["max-credits"], "max credits") }
       : {}),
     ...(selectedPlatforms.length > 0 ? { platforms: selectedPlatforms } : {}),
-    ...(values.async || values.wait ? { async: true } : {}),
+    ...execution,
     ...(values["webhook-url"] ? { webhook_url: validWebhookUrl(values["webhook-url"]) } : {}),
     ...(values.metadata ? { metadata: parseMetadata(values.metadata) } : {}),
   };
@@ -467,6 +469,25 @@ async function createContext(args: string[], dependencies: CliDependencies): Pro
       : created;
 
   writeJson(dependencies.stdout, result, !!values.json);
+}
+
+function resolveExecution(
+  sync: boolean | undefined,
+  async: boolean | undefined,
+  wait: boolean | undefined,
+): Pick<ContextCreateInput, "async"> {
+  if (sync && (async || wait)) {
+    throw new CliError(
+      "CONFLICTING_OPTIONS",
+      "--sync cannot be combined with --async or --wait.",
+    );
+  }
+
+  if (sync) {
+    return { async: false };
+  }
+
+  return async || wait ? { async: true } : {};
 }
 
 async function getContext(args: string[], dependencies: CliDependencies): Promise<void> {
@@ -867,7 +888,8 @@ Context options:
   --effort, --depth <low|medium|high|x_high|auto>
   --platform, --source <name>   Repeat or use a comma-separated list
   --max-credits <number>
-  --async
+  --sync                       Run inline and return the completed result (default)
+  --async                      Queue the run and return its request ID
   --wait                       Submit asynchronously and poll to completion
   --webhook-url <https-url>
   --metadata <json-object>
