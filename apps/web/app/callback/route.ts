@@ -6,6 +6,13 @@ export const GET = handleAuth({
   baseURL: webEnv.APP_URL,
   returnPathname: "/dashboard",
   onSuccess: async ({ user }) => {
-    await provisionWorkspaceForUser(user);
+    try {
+      await provisionWorkspaceForUser(user);
+    } catch (error) {
+      console.error("Failed to provision workspace after authentication.", {
+        workosUserId: user.id,
+        error,
+      });
+    }
   },
 });

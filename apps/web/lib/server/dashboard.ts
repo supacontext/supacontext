@@ -422,25 +422,14 @@ async function ensureWorkspaceForUser(input: {
       throw new DashboardError(500, "PROFILE_CREATE_FAILED", "Could not create profile.");
     }
 
-    let workspaceId = (
-      await transaction<Array<{ id: string }>>`
-        select id
-        from workspaces
-        where owner_profile_id = ${profileId}
-        order by created_at asc
-        limit 1
-      `
-    )[0]?.id;
-
-    if (!workspaceId) {
-      const workspaceRows = await transaction<Array<{ id: string }>>`
-        insert into workspaces (owner_profile_id, name)
-        values (${profileId}, ${input.displayName ? `${input.displayName}'s workspace` : "My workspace"})
-        returning id
-      `;
-
-      workspaceId = workspaceRows[0]?.id;
-    }
+    const workspaceRows = await transaction<Array<{ id: string }>>`
+      insert into workspaces (owner_profile_id, name)
+      values (${profileId}, ${input.displayName ? `${input.displayName}'s workspace` : "My workspace"})
+      on conflict (owner_profile_id) do update
+      set owner_profile_id = excluded.owner_profile_id
+      returning id
+    `;
+    const workspaceId = workspaceRows[0]?.id;
 
     if (!workspaceId) {
       throw new DashboardError(500, "WORKSPACE_CREATE_FAILED", "Could not create workspace.");
