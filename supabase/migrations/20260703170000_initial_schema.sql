@@ -37,6 +37,13 @@ create type public.ledger_event_type as enum (
 );
 create type public.cost_event_status as enum ('pending', 'settled', 'released', 'uncertain');
 create type public.subscription_status as enum ('trialing', 'active', 'past_due', 'cancelled', 'expired');
+create type public.cli_device_authorization_status as enum (
+  'pending',
+  'approved',
+  'denied',
+  'expired',
+  'consumed'
+);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -72,6 +79,50 @@ create table public.workspaces (
 create trigger workspaces_set_updated_at
 before update on public.workspaces
 for each row execute function public.set_updated_at();
+
+create table public.cli_device_authorizations (
+  id uuid primary key default gen_random_uuid(),
+  device_code_hash text not null unique,
+  user_code_hash text not null unique,
+  request_ip_hash text not null,
+  status public.cli_device_authorization_status not null default 'pending',
+  approved_by_profile_id uuid references public.profiles(id) on delete restrict,
+  expires_at timestamptz not null,
+  poll_interval_seconds integer not null default 5 check (poll_interval_seconds between 1 and 30),
+  last_polled_at timestamptz,
+  credential_hash text unique,
+  credential_expires_at timestamptz,
+  credential_consumed_at timestamptz,
+  credential_request_count integer not null default 0 check (credential_request_count between 0 and 10),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (
+    status not in ('approved', 'consumed') or approved_by_profile_id is not null
+  ),
+  check (
+    status <> 'consumed' or
+    (credential_hash is not null and credential_expires_at is not null)
+  )
+);
+
+create index cli_device_authorizations_created_at_idx
+on public.cli_device_authorizations(created_at);
+create index cli_device_authorizations_request_ip_idx
+on public.cli_device_authorizations(request_ip_hash, created_at);
+
+create trigger cli_device_authorizations_set_updated_at
+before update on public.cli_device_authorizations
+for each row execute function public.set_updated_at();
+
+create table public.cli_auth_rate_limits (
+  bucket_hash text not null,
+  window_start timestamptz not null,
+  request_count integer not null check (request_count > 0),
+  primary key (bucket_hash, window_start)
+);
+
+create index cli_auth_rate_limits_window_start_idx
+on public.cli_auth_rate_limits(window_start);
 
 create table public.plans (
   slug public.plan_slug primary key,
@@ -364,6 +415,8 @@ where external_id is not null;
 
 alter table public.profiles enable row level security;
 alter table public.workspaces enable row level security;
+alter table public.cli_device_authorizations enable row level security;
+alter table public.cli_auth_rate_limits enable row level security;
 alter table public.plans enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.credit_balances enable row level security;

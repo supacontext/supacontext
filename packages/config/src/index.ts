@@ -49,7 +49,6 @@ const workosSchema = {
   WORKOS_CLIENT_ID: requiredString,
   WORKOS_API_KEY: requiredString,
   WORKOS_COOKIE_PASSWORD: requiredString.min(32, "must be at least 32 characters"),
-  WORKOS_AUTHKIT_DOMAIN: optionalUrl,
   NEXT_PUBLIC_WORKOS_REDIRECT_URI: requiredUrl,
 };
 
@@ -103,19 +102,46 @@ export const workerEnvSchema = z.object({
   LOG_LEVEL: logLevel,
 });
 
-export const webEnvSchema = z.object({
-  NODE_ENV: nodeEnv,
-  APP_URL: requiredUrl,
-  API_URL: requiredUrl,
-  WORKER_URL: requiredUrl,
-  WORKER_INTERNAL_TOKEN: optionalString,
-  DATABASE_URL: requiredString,
-  API_KEY_HASH_SECRET: requiredString.min(32, "must be at least 32 characters"),
-  ...workosSchema,
-  ...creemSchema,
-  SUPABASE_URL: requiredUrl,
-  SUPABASE_ANON_KEY: requiredString,
-});
+export const webEnvSchema = z
+  .object({
+    NODE_ENV: nodeEnv,
+    APP_URL: requiredUrl,
+    API_URL: requiredUrl,
+    WORKER_URL: requiredUrl,
+    WORKER_INTERNAL_TOKEN: optionalString,
+    DATABASE_URL: requiredString,
+    API_KEY_HASH_SECRET: requiredString.min(32, "must be at least 32 characters"),
+    ...workosSchema,
+    ...creemSchema,
+    SUPABASE_URL: requiredUrl,
+    SUPABASE_ANON_KEY: requiredString,
+  })
+  .superRefine((environment, context) => {
+    const appUrl = new URL(environment.APP_URL);
+    const expectedRedirectUri = new URL("/auth/callback", appUrl).toString();
+
+    if (environment.NEXT_PUBLIC_WORKOS_REDIRECT_URI !== expectedRedirectUri) {
+      context.addIssue({
+        code: "custom",
+        path: ["NEXT_PUBLIC_WORKOS_REDIRECT_URI"],
+        message: `must equal ${expectedRedirectUri}`,
+      });
+    }
+
+    if (appUrl.protocol !== "http:" && appUrl.protocol !== "https:") {
+      context.addIssue({
+        code: "custom",
+        path: ["APP_URL"],
+        message: "must use HTTP or HTTPS",
+      });
+    } else if (environment.NODE_ENV === "production" && appUrl.protocol !== "https:") {
+      context.addIssue({
+        code: "custom",
+        path: ["APP_URL"],
+        message: "must use HTTPS in production",
+      });
+    }
+  });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;

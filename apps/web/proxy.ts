@@ -3,16 +3,13 @@ import { authkitProxy } from "@workos-inc/authkit-nextjs";
 const configuredRedirectUri = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
 const appUrl = process.env.APP_URL;
 const redirectUri =
-  configuredRedirectUri || (appUrl ? new URL("/callback", appUrl).toString() : undefined);
+  configuredRedirectUri || (appUrl ? new URL("/auth/callback", appUrl).toString() : undefined);
 
 if (!redirectUri) {
-  throw new Error("Set NEXT_PUBLIC_WORKOS_REDIRECT_URI or APP_URL for WorkOS AuthKit.");
+  throw new Error("Set NEXT_PUBLIC_WORKOS_REDIRECT_URI or APP_URL for WorkOS sessions.");
 }
 
-export default authkitProxy({
-  redirectUri,
-  signUpPaths: ["/sign-up"],
-});
+export default authkitProxy({ redirectUri });
 
 export const config = {
   matcher: [

@@ -24,6 +24,7 @@ import {
   discoverCli,
   listApiKeys,
   pollDeviceAuthentication,
+  revokeCliCredential,
   type DashboardApiKey,
 } from "./device-auth.js";
 import { CliError } from "./errors.js";
@@ -169,22 +170,40 @@ async function login(args: string[], dependencies: CliDependencies): Promise<voi
     fetch: dependencies.fetch,
     sleep: dependencies.sleep,
   });
-  const activeKeys = (
-    await listApiKeys(appUrl, authenticated.access_token, dependencies.fetch)
-  ).filter((key) => !key.revokedAt);
-  const selected = values["create-key"]
-    ? await createSelectedKey({
-        name: values["create-key"],
-        maxEffort: values["max-effort"],
-        monthlyCreditLimit: values["monthly-credit-limit"],
+  const selected = await (async () => {
+    try {
+      const activeKeys = (
+        await listApiKeys(appUrl, authenticated.access_token, dependencies.fetch)
+      ).filter((key) => !key.revokedAt);
+
+      return values["create-key"]
+        ? await createSelectedKey({
+            name: values["create-key"],
+            maxEffort: values["max-effort"],
+            monthlyCreditLimit: values["monthly-credit-limit"],
+            appUrl,
+            accessToken: authenticated.access_token,
+            fetch: dependencies.fetch,
+          })
+        : await selectKeyInteractively(activeKeys, appUrl, authenticated.access_token, {
+            ...dependencies,
+            stdout: values.json ? dependencies.stderr : dependencies.stdout,
+          });
+    } catch (error) {
+      await revokeCliCredential(
         appUrl,
-        accessToken: authenticated.access_token,
-        fetch: dependencies.fetch,
-      })
-    : await selectKeyInteractively(activeKeys, appUrl, authenticated.access_token, {
-        ...dependencies,
-        stdout: values.json ? dependencies.stderr : dependencies.stdout,
-      });
+        authenticated.access_token,
+        dependencies.fetch,
+      ).catch(() => undefined);
+      throw error;
+    }
+  })();
+
+  await revokeCliCredential(
+    appUrl,
+    authenticated.access_token,
+    dependencies.fetch,
+  ).catch(() => undefined);
   const apiUrl = validUrl(values["api-url"] ?? discovery.api_url, "API URL");
 
   await saveProfile(

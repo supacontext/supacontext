@@ -99,9 +99,9 @@ importers:
       '@workos-inc/node':
         specifier: ^10.7.0
         version: 10.7.0
-      jose:
-        specifier: ^6.2.3
-        version: 6.2.3
+      iron-session:
+        specifier: ^8.0.4
+        version: 8.0.4
       lucide-react:
         specifier: ^1.23.0
         version: 1.23.0(react@19.2.7)
