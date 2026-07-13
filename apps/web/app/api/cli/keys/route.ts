@@ -55,9 +55,13 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  return (await revokeCliCredential(request))
-    ? new Response(null, { status: 204 })
-    : unauthorized();
+  try {
+    return (await revokeCliCredential(request))
+      ? new Response(null, { status: 204 })
+      : unauthorized();
+  } catch (error) {
+    return jsonError(error);
+  }
 }
 
 export async function POST(request: Request) {

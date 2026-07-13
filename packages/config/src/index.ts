@@ -128,7 +128,13 @@ export const webEnvSchema = z
       });
     }
 
-    if (environment.NODE_ENV === "production" && appUrl.protocol !== "https:") {
+    if (appUrl.protocol !== "http:" && appUrl.protocol !== "https:") {
+      context.addIssue({
+        code: "custom",
+        path: ["APP_URL"],
+        message: "must use HTTP or HTTPS",
+      });
+    } else if (environment.NODE_ENV === "production" && appUrl.protocol !== "https:") {
       context.addIssue({
         code: "custom",
         path: ["APP_URL"],

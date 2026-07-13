@@ -10,7 +10,6 @@ vi.mock("../../../../lib/server/auth", () => ({
   isOAuthProvider: (value: string) => value === "google" || value === "github",
   isSameOriginRequest: (request: Request) =>
     request.headers.get("origin") === "https://app.example.test",
-  normalizeReturnPath: (value: string | null) => value ?? "/dashboard",
 }));
 vi.mock("../../../../lib/server/env", () => ({
   webEnv: { APP_URL: "https://app.example.test" },

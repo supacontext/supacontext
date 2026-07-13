@@ -4,7 +4,6 @@ import {
   createOAuthFlow,
   isOAuthProvider,
   isSameOriginRequest,
-  normalizeReturnPath,
   type AuthIntent,
 } from "../../../../lib/server/auth";
 import { webEnv } from "../../../../lib/server/env";
@@ -32,12 +31,13 @@ export async function POST(
   }
 
   const intent: AuthIntent = form.get("intent") === "sign-up" ? "sign-up" : "sign-in";
-  const returnTo = typeof form.get("returnTo") === "string" ? String(form.get("returnTo")) : null;
+  const returnTo =
+    typeof form.get("returnTo") === "string" ? String(form.get("returnTo")) : "/dashboard";
 
   try {
     const flow = await createOAuthFlow({
       provider,
-      returnTo: normalizeReturnPath(returnTo),
+      returnTo,
       intent,
     });
     const response = NextResponse.redirect(flow.url, 303);
@@ -49,7 +49,7 @@ export async function POST(
     const page = intent === "sign-up" ? "/sign-up" : "/sign-in";
     const params = new URLSearchParams({
       error: "provider_unavailable",
-      returnTo: normalizeReturnPath(returnTo),
+      returnTo,
     });
 
     return NextResponse.redirect(new URL(`${page}?${params.toString()}`, webEnv.APP_URL), 303);

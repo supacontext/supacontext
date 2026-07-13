@@ -9,12 +9,6 @@ export async function POST(request: NextRequest) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const workspace = await getWorkspaceContext();
-
-  if (!workspace) {
-    return NextResponse.redirect(new URL("/sign-in", webEnv.APP_URL), 303);
-  }
-
   let form: FormData;
 
   try {
@@ -25,6 +19,19 @@ export async function POST(request: NextRequest) {
 
   const userCode = form.get("user_code");
   const decision = form.get("decision");
+  const workspace = await getWorkspaceContext();
+
+  if (!workspace) {
+    const returnTo = new URL("/cli/authorize", webEnv.APP_URL);
+    const signInUrl = new URL("/sign-in", webEnv.APP_URL);
+
+    if (typeof userCode === "string") {
+      returnTo.searchParams.set("user_code", userCode);
+    }
+
+    signInUrl.searchParams.set("returnTo", `${returnTo.pathname}${returnTo.search}`);
+    return NextResponse.redirect(signInUrl, 303);
+  }
 
   if (typeof userCode !== "string" || (decision !== "approve" && decision !== "deny")) {
     return redirectResult("invalid");

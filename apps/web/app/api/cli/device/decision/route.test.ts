@@ -42,7 +42,9 @@ describe("authenticated CLI approval", () => {
 
     const response = await POST(request());
 
-    expect(response.headers.get("location")).toBe("https://app.example.test/sign-in");
+    expect(response.headers.get("location")).toBe(
+      "https://app.example.test/sign-in?returnTo=%2Fcli%2Fauthorize%3Fuser_code%3DABCD-EFGH-JKLMN",
+    );
     expect(mocks.decide).not.toHaveBeenCalled();
   });
 

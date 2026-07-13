@@ -199,7 +199,11 @@ async function login(args: string[], dependencies: CliDependencies): Promise<voi
     }
   })();
 
-  await revokeCliCredential(appUrl, authenticated.access_token, dependencies.fetch);
+  await revokeCliCredential(
+    appUrl,
+    authenticated.access_token,
+    dependencies.fetch,
+  ).catch(() => undefined);
   const apiUrl = validUrl(values["api-url"] ?? discovery.api_url, "API URL");
 
   await saveProfile(

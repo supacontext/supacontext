@@ -100,10 +100,11 @@ describe("Supacontext CLI", () => {
     expect(dependencies.stdout.value).not.toContain(replacement);
   });
 
-  it("runs app-owned device authorization, revokes its credential, and stores a new key", async () => {
+  it("stores a new key when device credential revocation fails", async () => {
     const dependencies = await testDependencies();
     const accessToken = "short-lived-cli-credential";
     let tokenRequests = 0;
+    let revocationRequests = 0;
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
 
@@ -151,7 +152,8 @@ describe("Supacontext CLI", () => {
 
       if (url === "https://app.example.test/api/cli/keys" && init?.method === "DELETE") {
         expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${accessToken}`);
-        return new Response(null, { status: 204 });
+        revocationRequests += 1;
+        return Response.json({ error: "revocation failed" }, { status: 500 });
       }
 
       if (url === "https://app.example.test/api/cli/keys" && init?.method === "POST") {
@@ -205,6 +207,7 @@ describe("Supacontext CLI", () => {
       "https://app.example.test/cli/authorize?user_code=ABCD-EFGH",
     );
     expect(dependencies.sleep).toHaveBeenCalledWith(1_000);
+    expect(revocationRequests).toBe(1);
     expect(config.profiles.default?.api_key).toBe(apiKey);
     expect(config.profiles.default?.api_url).toBe("https://api.example.test");
     expect(allOutput).not.toContain(apiKey);
