@@ -100,9 +100,9 @@ describe("Supacontext CLI", () => {
     expect(dependencies.stdout.value).not.toContain(replacement);
   });
 
-  it("runs WorkOS device authorization and stores a newly created key", async () => {
+  it("runs app-owned device authorization, revokes its credential, and stores a new key", async () => {
     const dependencies = await testDependencies();
-    const accessToken = "workos-access-token";
+    const accessToken = "short-lived-cli-credential";
     let tokenRequests = 0;
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -111,25 +111,25 @@ describe("Supacontext CLI", () => {
         expect(init?.signal).toBeInstanceOf(AbortSignal);
         return Response.json({
           api_url: "https://api.example.test",
-          workos_client_id: "client_test",
-          device_authorization_url: "https://workos.test/device",
-          device_token_url: "https://workos.test/token",
+          device_authorization_url: "https://app.example.test/api/cli/device/start",
+          device_token_url: "https://app.example.test/api/cli/device/token",
         });
       }
 
-      if (url === "https://workos.test/device") {
+      if (url === "https://app.example.test/api/cli/device/start") {
         expect(init?.signal).toBeInstanceOf(AbortSignal);
         return Response.json({
           device_code: "secret-device-code",
           user_code: "ABCD-EFGH",
-          verification_uri: "https://auth.example.test/device",
-          verification_uri_complete: "https://auth.example.test/device?user_code=ABCD-EFGH",
+          verification_uri: "https://app.example.test/cli/authorize",
+          verification_uri_complete:
+            "https://app.example.test/cli/authorize?user_code=ABCD-EFGH",
           expires_in: 300,
           interval: 1,
         });
       }
 
-      if (url === "https://workos.test/token") {
+      if (url === "https://app.example.test/api/cli/device/token") {
         tokenRequests += 1;
 
         if (tokenRequests === 1) {
@@ -147,6 +147,11 @@ describe("Supacontext CLI", () => {
         expect(init?.signal).toBeInstanceOf(AbortSignal);
         expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${accessToken}`);
         return Response.json({ keys: [] });
+      }
+
+      if (url === "https://app.example.test/api/cli/keys" && init?.method === "DELETE") {
+        expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${accessToken}`);
+        return new Response(null, { status: 204 });
       }
 
       if (url === "https://app.example.test/api/cli/keys" && init?.method === "POST") {
@@ -197,7 +202,7 @@ describe("Supacontext CLI", () => {
     const allOutput = dependencies.stdout.value + dependencies.stderr.value;
 
     expect(dependencies.openUrl).toHaveBeenCalledWith(
-      "https://auth.example.test/device?user_code=ABCD-EFGH",
+      "https://app.example.test/cli/authorize?user_code=ABCD-EFGH",
     );
     expect(dependencies.sleep).toHaveBeenCalledWith(1_000);
     expect(config.profiles.default?.api_key).toBe(apiKey);
@@ -240,22 +245,21 @@ describe("Supacontext CLI", () => {
       if (url === "https://app.example.test/api/cli/config") {
         return Response.json({
           api_url: "https://api.example.test",
-          workos_client_id: "client_test",
-          device_authorization_url: "https://workos.test/device",
-          device_token_url: "https://workos.test/token",
+          device_authorization_url: "https://app.example.test/api/cli/device/start",
+          device_token_url: "https://app.example.test/api/cli/device/token",
         });
       }
 
-      if (url === "https://workos.test/device") {
+      if (url === "https://app.example.test/api/cli/device/start") {
         return Response.json({
           device_code: "secret-device-code",
           user_code: "ABCD-EFGH",
-          verification_uri: "https://auth.example.test/device",
+          verification_uri: "https://app.example.test/cli/authorize",
           expires_in: 300,
         });
       }
 
-      if (url === "https://workos.test/token") {
+      if (url === "https://app.example.test/api/cli/device/token") {
         return Response.json({ access_token: "access-token", user: { id: "user_1" } });
       }
 
@@ -302,14 +306,13 @@ describe("Supacontext CLI", () => {
       const authentication = pollDeviceAuthentication({
         discovery: {
           api_url: "https://api.example.test",
-          workos_client_id: "client_test",
-          device_authorization_url: "https://workos.test/device",
-          device_token_url: "https://workos.test/token",
+          device_authorization_url: "https://app.example.test/api/cli/device/start",
+          device_token_url: "https://app.example.test/api/cli/device/token",
         },
         authorization: {
           device_code: "secret-device-code",
           user_code: "ABCD-EFGH",
-          verification_uri: "https://auth.example.test/device",
+          verification_uri: "https://app.example.test/cli/authorize",
           expires_in: 1,
         },
         fetch: fetchMock,
@@ -366,9 +369,8 @@ describe("Supacontext CLI", () => {
       if (url === "https://app.example.test/api/cli/config") {
         return Response.json({
           api_url: "https://api.example.test",
-          workos_client_id: "client_test",
-          device_authorization_url: "https://workos.test/device",
-          device_token_url: "https://workos.test/token",
+          device_authorization_url: "https://app.example.test/api/cli/device/start",
+          device_token_url: "https://app.example.test/api/cli/device/token",
         });
       }
 

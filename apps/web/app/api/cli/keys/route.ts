@@ -1,4 +1,7 @@
-import { getCliWorkspaceContext } from "../../../../lib/server/cli-auth";
+import {
+  getCliWorkspaceContext,
+  revokeCliCredential,
+} from "../../../../lib/server/cli-auth";
 import {
   DashboardError,
   createDashboardApiKey,
@@ -49,6 +52,12 @@ export async function GET(request: Request) {
   } catch (error) {
     return jsonError(error);
   }
+}
+
+export async function DELETE(request: Request) {
+  return (await revokeCliCredential(request))
+    ? new Response(null, { status: 204 })
+    : unauthorized();
 }
 
 export async function POST(request: Request) {

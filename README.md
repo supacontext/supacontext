@@ -113,11 +113,11 @@ Examples live in `packages/sdk/examples`.
 Run the CLI from this repository with `pnpm cli`, or build `@supacontext/cli` to use its
 `supacontext` executable.
 
-Browser login uses WorkOS AuthKit's OAuth 2.0 Device Authorization flow. It opens the hosted
-sign-in/sign-up page, waits for approval, then uses the short-lived WorkOS access token to list or
-create Supacontext API keys. The WorkOS token is discarded after setup and is never stored. Because
-existing API-key values cannot be recovered, selecting an existing key asks for its value using a
-masked prompt.
+Browser login opens Supacontext’s authorization page and offers Google and GitHub sign-in. The CLI
+uses a short-lived, single-use device request, then receives a temporary Supacontext credential to
+list or create API keys. It revokes that credential before saving the selected profile. The CLI
+never stores the browser session or temporary credential. Because existing API-key values cannot be
+recovered, selecting an existing key asks for its value using a masked prompt.
 
 ```bash
 # Interactive: list existing keys, select one, or create one.
@@ -199,25 +199,31 @@ Shared:
 - `DATABASE_URL`
 - `API_KEY_HASH_SECRET` at least 32 characters
 
-Web and WorkOS AuthKit:
+Web and WorkOS User Management:
 
 - `WORKOS_CLIENT_ID`
 - `WORKOS_API_KEY`
-- `WORKOS_COOKIE_PASSWORD` at least 32 characters
-- `WORKOS_AUTHKIT_DOMAIN` optional custom AuthKit domain used as the access-token issuer
-- `NEXT_PUBLIC_WORKOS_REDIRECT_URI` for example `http://localhost:3000/callback`
+- `WORKOS_COOKIE_PASSWORD` at least 32 characters; also protects private CLI rate-limit identifiers
+- `NEXT_PUBLIC_WORKOS_REDIRECT_URI`, for example `http://localhost:3000/auth/callback`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
-Configure the WorkOS dashboard Redirects settings for each environment:
+In WorkOS, configure Google OAuth and GitHub OAuth under Authentication → OAuth providers. Use your
+own production provider credentials and allow user registration. In each provider console, register
+the provider callback URI shown by WorkOS. Set a custom Google OAuth domain in WorkOS if the Google
+consent screen should show a Supacontext domain. Disable every other authentication method and do
+not enable an organization policy that requires SSO or MFA for this Google/GitHub-only UI.
 
-- Redirect URI: `<APP_URL>/callback`
+Configure the WorkOS application Redirects settings for each environment:
+
+- Redirect URI: `<APP_URL>/auth/callback`
 - Sign-in endpoint: `<APP_URL>/sign-in`
 - Sign-out redirect: `<APP_URL>`
 
-Enable AuthKit CLI Auth for the WorkOS environment used by the web app. The CLI discovers the
-public WorkOS client ID and API URL from `<APP_URL>/api/cli/config`; no WorkOS secret is shipped in
-the CLI.
+The web app starts WorkOS authorization with the direct `GoogleOAuth` or `GitHubOAuth` provider
+selector, state, and PKCE. WorkOS returns to the Supacontext callback, which creates the encrypted
+WorkOS session. The CLI uses Supacontext’s own device endpoints and database tables; AuthKit CLI Auth
+does not need to be enabled.
 
 API:
 
@@ -351,7 +357,7 @@ Set health checks to:
 
 Set env vars separately per Railway service:
 
-- Web: shared web URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, WorkOS AuthKit, Supabase anon URL/key, and Creem billing vars.
+- Web: shared web URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, WorkOS User Management, Supabase anon URL/key, and Creem billing vars.
 - API: shared API URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Supabase anon/service keys, Upstash Redis, and QStash token.
 - Worker: shared worker URLs/tokens, `DATABASE_URL`, `API_KEY_HASH_SECRET`, Supabase anon/service keys, QStash signing keys, and provider API keys.
 

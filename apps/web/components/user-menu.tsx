@@ -2,7 +2,6 @@
 
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { LogOut } from "lucide-react";
-import { useState } from "react";
 
 function getInitials(name: string): string {
   const words = name
@@ -14,8 +13,7 @@ function getInitials(name: string): string {
 }
 
 export function UserMenu() {
-  const { loading, signOut, user } = useAuth();
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  const { loading, user } = useAuth();
 
   if (loading) {
     return <div className="userMenuSkeleton" aria-label="Loading user menu" />;
@@ -34,18 +32,11 @@ export function UserMenu() {
         {getInitials(displayName)}
       </span>
       <span className="userEmail">{user.email}</span>
-      <button
-        aria-label="Sign out"
-        className="iconButton"
-        disabled={isSigningOut}
-        onClick={() => {
-          setIsSigningOut(true);
-          void signOut();
-        }}
-        type="button"
-      >
-        <LogOut aria-hidden="true" size={16} />
-      </button>
+      <form action="/auth/sign-out" method="post">
+        <button aria-label="Sign out" className="iconButton" type="submit">
+          <LogOut aria-hidden="true" size={16} />
+        </button>
+      </form>
     </div>
   );
 }

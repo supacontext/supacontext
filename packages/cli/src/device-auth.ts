@@ -4,7 +4,6 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 export type CliDiscovery = {
   api_url: string;
-  workos_client_id: string;
   device_authorization_url: string;
   device_token_url: string;
 };
@@ -20,10 +19,6 @@ export type DeviceAuthorization = {
 
 export type DeviceAuthentication = {
   access_token: string;
-  user: {
-    id: string;
-    email?: string;
-  };
 };
 
 export type DashboardApiKey = {
@@ -48,6 +43,10 @@ export async function discoverCli(appUrl: string, fetchImpl: typeof fetch): Prom
     throw responseError(response, data, "Could not load Supacontext CLI configuration.");
   }
 
+  const appOrigin = urlOrigin(appUrl, "Supacontext app URL");
+
+  assertOwnedUrl(data.device_authorization_url, appOrigin, "device authorization URL");
+  assertOwnedUrl(data.device_token_url, appOrigin, "device token URL");
   return data;
 }
 
@@ -57,18 +56,19 @@ export async function authorizeDevice(
 ): Promise<DeviceAuthorization> {
   const response = await fetchImpl(discovery.device_authorization_url, {
     method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      client_id: discovery.workos_client_id,
-    }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const data = await readJson(response);
 
   if (!response.ok || !isDeviceAuthorization(data)) {
     throw responseError(response, data, "Could not start browser authorization.");
+  }
+
+  const appOrigin = urlOrigin(discovery.device_authorization_url, "device authorization URL");
+
+  assertOwnedUrl(data.verification_uri, appOrigin, "verification URL");
+  if (data.verification_uri_complete) {
+    assertOwnedUrl(data.verification_uri_complete, appOrigin, "verification URL");
   }
 
   return data;
@@ -95,9 +95,7 @@ export async function pollDeviceAuthentication(input: {
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           device_code: input.authorization.device_code,
-          client_id: input.discovery.workos_client_id,
         }),
         signal,
       });
@@ -133,6 +131,10 @@ export async function pollDeviceAuthentication(input: {
       throw new CliError("AUTHORIZATION_EXPIRED", "Browser authorization expired. Try again.");
     }
 
+    if (error === "consumed_token") {
+      throw new CliError("AUTHORIZATION_CONSUMED", "Browser authorization was already used.");
+    }
+
     throw responseError(response, data, "Browser authorization failed.");
   }
 
@@ -164,6 +166,26 @@ export async function listApiKeys(
   }
 
   return data.keys as DashboardApiKey[];
+}
+
+export async function revokeCliCredential(
+  appUrl: string,
+  accessToken: string,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const response = await fetchImpl(`${appUrl.replace(/\/$/, "")}/api/cli/keys`, {
+    method: "DELETE",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const data = await readJson(response);
+
+    throw responseError(response, data, "Could not close browser authorization.");
+  }
 }
 
 export async function createApiKey(input: {
@@ -242,6 +264,26 @@ function responseError(response: Response, data: unknown, fallback: string): Cli
   return new CliError(code, message);
 }
 
+function urlOrigin(value: string, label: string): string {
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("invalid protocol");
+    }
+
+    return url.origin;
+  } catch {
+    throw new CliError("INVALID_URL", `${label} must be a valid HTTP or HTTPS URL.`);
+  }
+}
+
+function assertOwnedUrl(value: string, expectedOrigin: string, label: string): void {
+  if (urlOrigin(value, label) !== expectedOrigin) {
+    throw new CliError("INVALID_URL", `${label} must use the Supacontext app origin.`);
+  }
+}
+
 function isDiscovery(value: unknown): value is CliDiscovery {
   if (!value || typeof value !== "object") {
     return false;
@@ -251,7 +293,6 @@ function isDiscovery(value: unknown): value is CliDiscovery {
 
   return (
     typeof candidate.api_url === "string" &&
-    typeof candidate.workos_client_id === "string" &&
     typeof candidate.device_authorization_url === "string" &&
     typeof candidate.device_token_url === "string"
   );
@@ -282,12 +323,7 @@ function isDeviceAuthentication(value: unknown): value is DeviceAuthentication {
 
   const candidate = value as Partial<DeviceAuthentication>;
 
-  return (
-    typeof candidate.access_token === "string" &&
-    !!candidate.user &&
-    typeof candidate.user === "object" &&
-    typeof candidate.user.id === "string"
-  );
+  return typeof candidate.access_token === "string";
 }
 
 function isDashboardApiKey(value: unknown): value is DashboardApiKey {
